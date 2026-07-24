@@ -1,0 +1,15 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: solobbs
+      POSTGRES_PASSWORD: solobbs
+      POSTGRES_DB: solobbs
+    ports:
+      - "5432:5432"
+    volumes:
+      - solobbs_pg:/var/lib/postgresql/data
+
+volumes:
+  solobbs_pg:

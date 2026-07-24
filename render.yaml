@@ -1,0 +1,30 @@
+databases:
+  - name: solobbs-db
+    plan: free
+    databaseName: solobbs
+    user: solobbs
+
+services:
+  - type: web
+    name: solobbs
+    runtime: node
+    plan: free
+    region: oregon
+    buildCommand: npm ci && npx prisma generate && npx prisma db push && npm run build
+    startCommand: npm run start:prod
+    healthCheckPath: /
+    envVars:
+      - key: NODE_VERSION
+        value: "22.12.0"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: solobbs-db
+          property: connectionString
+      - key: AUTH_SECRET
+        generateValue: true
+      - key: AUTH_URL
+        sync: false
+      - key: NEXTAUTH_URL
+        sync: false
+      - key: SEED_ON_BOOT
+        value: "true"

@@ -1,0 +1,326 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  MODEL
+  CLIENT
+}
+
+enum EscrowStatus {
+  PENDING
+  FUNDED
+  IN_PROGRESS
+  RELEASED
+  REFUNDED
+  DISPUTED
+}
+
+enum PaymentMethod {
+  CARD
+  CRYPTO
+  WALLET
+  P2P
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum JobStatus {
+  SCHEDULED
+  ACTIVE
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  passwordHash  String
+  name          String
+  role          Role      @default(MODEL)
+  phone         String?
+  bio           String?
+  city          String?
+  avatarUrl     String?
+  referralCode  String    @unique
+  referredById  String?
+  referredBy    User?     @relation("Referrals", fields: [referredById], references: [id])
+  referrals     User[]    @relation("Referrals")
+  walletBalance Float     @default(0) // USDT (settlement)
+  btcBalance    Float     @default(0)
+  ltcBalance    Float     @default(0)
+  escrowHeld    Float     @default(0) // USDT in escrow
+  totalEarned   Float     @default(0) // USDT
+  totalJobs     Int       @default(0)
+  rating        Float     @default(5)
+  isActive      Boolean   @default(true)
+  isVerified    Boolean   @default(false)
+  galleryPublic Boolean   @default(true)
+  rateFrom      Float? // USDT from
+  usdtPayoutAddress String?
+  btcPayoutAddress  String?
+  ltcPayoutAddress  String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  jobsAsModel   Job[]     @relation("ModelJobs")
+  jobsAsClient  Job[]     @relation("ClientJobs")
+  escrowsModel  Escrow[]  @relation("ModelEscrows")
+  escrowsClient Escrow[]  @relation("ClientEscrows")
+  payments      Payment[]
+  commissions   Commission[] @relation("EarnerCommissions")
+  sourceCommissions Commission[] @relation("SourceCommissions")
+  notifications Notification[]
+  supportChats  SupportConversation[]
+  reviewsAuthored  Review[] @relation("ReviewsAuthored")
+  reviewsReceived  Review[] @relation("ReviewsReceived")
+  galleryImages    GalleryImage[]
+  inquiriesAsModel Inquiry[] @relation("ModelInquiries")
+  inquiriesAsClient Inquiry[] @relation("ClientInquiries")
+  inquiryMessages  InquiryMessage[]
+  paymentMethods   UserPaymentMethod[]
+  walletDeposits   WalletDeposit[]
+}
+
+model Job {
+  id          String    @id @default(cuid())
+  title       String
+  description String?
+  amount      Float
+  city        String?
+  status      JobStatus @default(SCHEDULED)
+  scheduledAt DateTime?
+  completedAt DateTime?
+  modelId     String
+  clientId    String?
+  model       User      @relation("ModelJobs", fields: [modelId], references: [id])
+  client      User?     @relation("ClientJobs", fields: [clientId], references: [id])
+  escrow      Escrow?
+  reviews     Review[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Review {
+  id        String   @id @default(cuid())
+  rating    Int
+  comment   String?
+  jobId     String
+  job       Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User     @relation("ReviewsAuthored", fields: [authorId], references: [id])
+  targetId  String
+  target    User     @relation("ReviewsReceived", fields: [targetId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([jobId, authorId])
+}
+
+model GalleryImage {
+  id        String   @id @default(cuid())
+  url       String
+  caption   String?
+  sortOrder Int      @default(0)
+  isCover   Boolean  @default(false)
+  modelId   String
+  model     User     @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+}
+
+model Inquiry {
+  id        String   @id @default(cuid())
+  status    String   @default("OPEN")
+  subject   String?
+  modelId   String
+  clientId  String
+  model     User     @relation("ModelInquiries", fields: [modelId], references: [id])
+  client    User     @relation("ClientInquiries", fields: [clientId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  messages  InquiryMessage[]
+  escrows   Escrow[]
+
+  @@unique([modelId, clientId])
+}
+
+model InquiryMessage {
+  id        String   @id @default(cuid())
+  body      String
+  type      String   @default("TEXT") // TEXT | P2P
+  inquiryId String
+  inquiry   Inquiry  @relation(fields: [inquiryId], references: [id], onDelete: Cascade)
+  senderId  String
+  sender    User     @relation(fields: [senderId], references: [id])
+  escrowId  String?
+  escrow    Escrow?  @relation(fields: [escrowId], references: [id])
+  createdAt DateTime @default(now())
+}
+
+model UserPaymentMethod {
+  id            String   @id @default(cuid())
+  type          String
+  label         String
+  accountName   String
+  accountNumber String
+  bankName      String?
+  phone         String?
+  notes         String?
+  isDefault     Boolean  @default(false)
+  isActive      Boolean  @default(true)
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  escrows       Escrow[] @relation("SellerPaymentMethod")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model Escrow {
+  id                    String       @id @default(cuid())
+  amount                Float
+  fee                   Float        @default(0)
+  asset                 String       @default("USDT")
+  chain                 String       @default("POLYGON")
+  status                EscrowStatus @default(PENDING)
+  paymentMethod         PaymentMethod
+  cryptoTxHash          String?
+  lockTxHash            String?
+  releaseTxHash         String?
+  contractEscrowId      String?
+  cardLast4             String?
+  notes                 String?
+  jobId                 String?      @unique
+  job                   Job?         @relation(fields: [jobId], references: [id])
+  modelId               String
+  clientId              String?
+  model                 User         @relation("ModelEscrows", fields: [modelId], references: [id])
+  client                User?        @relation("ClientEscrows", fields: [clientId], references: [id])
+  inquiryId             String?
+  inquiry               Inquiry?     @relation(fields: [inquiryId], references: [id])
+  sellerPaymentMethodId String?
+  sellerPaymentMethod   UserPaymentMethod? @relation("SellerPaymentMethod", fields: [sellerPaymentMethodId], references: [id])
+  buyerMarkedPaidAt     DateTime?
+  clientArrivedAt       DateTime?
+  fundedAt              DateTime?
+  releasedAt            DateTime?
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+  payments              Payment[]
+  chatMessages          InquiryMessage[]
+}
+
+model Payment {
+  id            String        @id @default(cuid())
+  amount        Float
+  method        PaymentMethod
+  status        PaymentStatus @default(PENDING)
+  externalId    String?
+  cryptoNetwork String?
+  cryptoAddress String?
+  cardBrand     String?
+  cardLast4     String?
+  userId        String
+  user          User          @relation(fields: [userId], references: [id])
+  escrowId      String?
+  escrow        Escrow?       @relation(fields: [escrowId], references: [id])
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+}
+
+model Commission {
+  id          String   @id @default(cuid())
+  amount      Float
+  level       Int
+  percent     Float
+  description String?
+  earnerId    String
+  sourceId    String
+  earner      User     @relation("EarnerCommissions", fields: [earnerId], references: [id])
+  source      User     @relation("SourceCommissions", fields: [sourceId], references: [id])
+  createdAt   DateTime @default(now())
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  title     String
+  body      String
+  link      String?
+  read      Boolean  @default(false)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+}
+
+model SupportConversation {
+  id           String            @id @default(cuid())
+  visitorId    String
+  visitorName  String?
+  visitorEmail String?
+  userId       String?
+  user         User?             @relation(fields: [userId], references: [id])
+  status       String            @default("OPEN")
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  messages     SupportMessage[]
+}
+
+model SupportMessage {
+  id             String              @id @default(cuid())
+  conversationId String
+  conversation   SupportConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender         String
+  body           String
+  createdAt      DateTime            @default(now())
+}
+
+model WalletDeposit {
+  id             String        @id @default(cuid())
+  amount         Float
+  asset          String        @default("USDT")
+  chain          String        @default("TRON")
+  rail           String
+  status         PaymentStatus @default(PENDING)
+  reference      String
+  depositAddress String?
+  txHash         String?
+  confirmations  Int           @default(0)
+  creditedUsdt   Float?
+  notes          String?
+  userId         String
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  completedAt    DateTime?
+}
+
+model PlatformSettings {
+  id                    String @id @default("default")
+  platformFeePercent    Float  @default(8)
+  referralL1Percent     Float  @default(10)
+  referralL2Percent     Float  @default(5)
+  referralL3Percent     Float  @default(2)
+  minEscrowAmount       Float  @default(50)
+  cryptoWalletBtc       String @default("bc1qsolobbsdemo000000000000000000000")
+  cryptoWalletUsdt      String @default("TSoloBBsDemoUSDT000000000000000000")
+  cryptoWalletLtc       String @default("ltc1qsolobbsdemodemo000000000000000")
+  escrowContractAddress String @default("0xSoloBBsEscrowContractDemo000000000")
+  escrowChain           String @default("POLYGON")
+  btcPriceUsdt          Float  @default(95000)
+  ltcPriceUsdt          Float  @default(85)
+  platformNequi         String @default("3000000011")
+  platformBankName      String @default("Bancolombia")
+  platformBankAccount   String @default("000-111222-33")
+  platformAccountName   String @default("SoloBBs SAS")
+}
