@@ -5,12 +5,20 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
-import { Film, Loader2, MessageSquare, Send } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Film,
+  Loader2,
+  MessageSquare,
+  Send,
+} from "lucide-react";
 import { StoryRing, StoryViewer, type StoryItem } from "@/components/StoryViewer";
 import { PriceLabel } from "@/components/PriceLabel";
 import { CurrencySwitcher } from "@/components/CurrencySwitcher";
 import { Toast, ToastTone } from "@/components/ui/Toast";
 import { useLocale } from "@/i18n/LocaleProvider";
+import { cn } from "@/lib/utils";
 
 type GalleryItem = {
   id: string;
@@ -50,6 +58,7 @@ export default function PublicModelPage({
   const [sending, setSending] = useState(false);
   const [tab, setTab] = useState<"message" | "book">("message");
   const [viewStories, setViewStories] = useState(false);
+  const [activeId, setActiveId] = useState<string | null>(null);
   const [toast, setToast] = useState<{
     open: boolean;
     message: string;
@@ -85,6 +94,13 @@ export default function PublicModelPage({
       }
       const data = await res.json();
       setModel(data.model);
+      const gallery: GalleryItem[] = data.model?.gallery || [];
+      const coverItem =
+        gallery.find((g) => g.isCover && g.mediaType !== "VIDEO") ||
+        gallery.find((g) => g.mediaType !== "VIDEO") ||
+        gallery[0] ||
+        null;
+      setActiveId(coverItem?.id ?? null);
       if (data.model?.rateFrom) setBookAmount(String(data.model.rateFrom));
       const sRes = await fetch(
         `/api/stories?modelCode=${encodeURIComponent(code)}`,
@@ -183,10 +199,28 @@ export default function PublicModelPage({
     );
   }
 
+  const gallery = model.gallery;
   const cover =
-    model.gallery.find((g) => g.isCover && g.mediaType !== "VIDEO") ||
-    model.gallery.find((g) => g.mediaType !== "VIDEO") ||
+    gallery.find((g) => g.isCover && g.mediaType !== "VIDEO") ||
+    gallery.find((g) => g.mediaType !== "VIDEO") ||
+    gallery[0] ||
     null;
+
+  const active =
+    (activeId ? gallery.find((g) => g.id === activeId) : null) ||
+    cover ||
+    gallery[0] ||
+    null;
+
+  const activeIndex = active
+    ? Math.max(0, gallery.findIndex((g) => g.id === active.id))
+    : 0;
+
+  function goGallery(delta: number) {
+    if (gallery.length < 2) return;
+    const next = (activeIndex + delta + gallery.length) % gallery.length;
+    setActiveId(gallery[next].id);
+  }
 
   return (
     <div className="min-h-screen bg-ink text-cream">
@@ -206,53 +240,116 @@ export default function PublicModelPage({
 
         <div className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr]">
           <div className="space-y-4">
-            <div className="relative aspect-[4/5] overflow-hidden rounded-[2rem] border border-line bg-panel">
-              {cover ? (
-                <Image
-                  src={cover.url}
-                  alt={model.name}
-                  fill
-                  className="object-cover"
-                  unoptimized
-                  priority
-                />
+            <div
+              className="relative aspect-[4/5] overflow-hidden rounded-[2rem] border border-line bg-panel"
+              onKeyDown={(e) => {
+                if (e.key === "ArrowLeft") {
+                  e.preventDefault();
+                  goGallery(-1);
+                }
+                if (e.key === "ArrowRight") {
+                  e.preventDefault();
+                  goGallery(1);
+                }
+              }}
+              tabIndex={gallery.length > 1 ? 0 : undefined}
+              role="region"
+              aria-label={dict.gallery.title}
+            >
+              {active ? (
+                active.mediaType === "VIDEO" ? (
+                  <video
+                    key={active.id}
+                    src={active.url}
+                    className="h-full w-full object-cover"
+                    controls
+                    playsInline
+                    autoPlay
+                  />
+                ) : (
+                  <Image
+                    key={active.id}
+                    src={active.url}
+                    alt={active.caption || model.name}
+                    fill
+                    className="object-cover"
+                    unoptimized
+                    priority
+                  />
+                )
               ) : (
                 <div className="flex h-full items-center justify-center text-mist">
                   {dict.gallery.emptyTitle}
                 </div>
               )}
-            </div>
-            {model.gallery.length > 1 && (
-              <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-                {model.gallery.map((img) => (
-                  <div
-                    key={img.id}
-                    className="relative aspect-square overflow-hidden rounded-xl border border-line"
+
+              {gallery.length > 1 && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => goGallery(-1)}
+                    className="absolute left-3 top-1/2 z-10 -translate-y-1/2 rounded-full border border-line bg-ink/70 p-2 text-cream backdrop-blur transition hover:bg-ink/90"
+                    aria-label={dict.common.prev}
                   >
-                    {img.mediaType === "VIDEO" ? (
-                      <>
-                        <video
-                          src={img.url}
-                          className="h-full w-full object-cover"
-                          muted
-                          playsInline
-                          controls
-                        />
-                        <span className="pointer-events-none absolute left-1 top-1 rounded bg-black/60 p-0.5">
-                          <Film className="h-3 w-3 text-cream" />
-                        </span>
-                      </>
-                    ) : (
-                      <Image
-                        src={img.url}
-                        alt={img.caption || model.name}
-                        fill
-                        className="object-cover"
-                        unoptimized
-                      />
-                    )}
+                    <ChevronLeft className="h-5 w-5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => goGallery(1)}
+                    className="absolute right-3 top-1/2 z-10 -translate-y-1/2 rounded-full border border-line bg-ink/70 p-2 text-cream backdrop-blur transition hover:bg-ink/90"
+                    aria-label={dict.common.next}
+                  >
+                    <ChevronRight className="h-5 w-5" />
+                  </button>
+                  <div className="absolute bottom-3 left-1/2 z-10 -translate-x-1/2 rounded-full bg-ink/70 px-3 py-1 font-mono text-xs text-cream backdrop-blur">
+                    {activeIndex + 1} / {gallery.length}
                   </div>
-                ))}
+                </>
+              )}
+            </div>
+            {gallery.length > 1 && (
+              <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                {gallery.map((img) => {
+                  const selected = img.id === active?.id;
+                  return (
+                    <button
+                      key={img.id}
+                      type="button"
+                      onClick={() => setActiveId(img.id)}
+                      aria-label={img.caption || model.name}
+                      aria-pressed={selected}
+                      className={cn(
+                        "relative aspect-square overflow-hidden rounded-xl border transition",
+                        selected
+                          ? "border-champagne ring-2 ring-champagne/50"
+                          : "border-line hover:border-champagne/50",
+                      )}
+                    >
+                      {img.mediaType === "VIDEO" ? (
+                        <>
+                          <video
+                            src={img.url}
+                            className="h-full w-full object-cover"
+                            muted
+                            playsInline
+                            preload="metadata"
+                          />
+                          <span className="pointer-events-none absolute left-1 top-1 rounded bg-black/60 p-0.5">
+                            <Film className="h-3 w-3 text-cream" />
+                          </span>
+                        </>
+                      ) : (
+                        <Image
+                          src={img.url}
+                          alt={img.caption || model.name}
+                          fill
+                          className="object-cover"
+                          unoptimized
+                        />
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             )}
           </div>
