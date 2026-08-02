@@ -9,6 +9,10 @@ export const TRON_FULL_HOST =
 
 /** Allow signed-message demo locks when no real USDT tx is available */
 export function tronEscrowDemoMode() {
+  // Never allow demo money shortcuts in production
+  if (process.env.NODE_ENV === "production" && process.env.ALLOW_TRON_DEMO !== "true") {
+    return false;
+  }
   return process.env.TRON_ESCROW_DEMO === "true";
 }
 
@@ -93,6 +97,15 @@ export async function verifyTronUsdtLock(opts: {
     const topics = log.topics || [];
     const topic0 = (topics[0] || "").replace(/^0x/, "").toLowerCase();
     if (topic0 !== transferTopic) continue;
+
+    // Must be the real USDT TRC-20 contract (not a fake token with same Transfer ABI)
+    const logContract = hexAddressToBase58(log.address || "");
+    if (
+      !logContract ||
+      logContract.toLowerCase() !== TRON_USDT_CONTRACT.toLowerCase()
+    ) {
+      continue;
+    }
 
     const toTopic = topics[2] || "";
     const toHex = toTopic.replace(/^0x/, "").slice(-40);

@@ -1,0 +1,36 @@
+﻿[
+    {
+        "deploy":  {
+                       "id":  "dep-d9nqdvrb9ksc73boqarg",
+                       "commit":  {
+                                      "id":  "c7a96c3fb4be0f6c56ccc05302fe303945edc63a",
+                                      "message":  "Prepare production deploy: Postgres, Render, Hostinger and Cloudflare.\n\nSwitch Prisma to PostgreSQL, point Render at an external DATABASE_URL, add DEPLOY.md and gallery/KYC/wallet updates for GitHub push.\n\nCo-authored-by: Cursor \u003ccursoragent@cursor.com\u003e",
+                                      "createdAt":  "2026-08-02T20:08:13Z"
+                                  },
+                       "status":  "build_failed",
+                       "trigger":  "api",
+                       "createdAt":  "2026-08-02T20:22:24.350217Z",
+                       "updatedAt":  "2026-08-02T20:23:22.885283Z",
+                       "startedAt":  "2026-08-02T20:22:29.092399Z",
+                       "finishedAt":  "2026-08-02T20:23:22.884776Z"
+                   },
+        "cursor":  "nHYmPEBavx1kdnJiOWtzYzczYm9xYXJn"
+    },
+    {
+        "deploy":  {
+                       "id":  "dep-d9nqdjfqj5pc73feldig",
+                       "commit":  {
+                                      "id":  "c7a96c3fb4be0f6c56ccc05302fe303945edc63a",
+                                      "message":  "Prepare production deploy: Postgres, Render, Hostinger and Cloudflare.\n\nSwitch Prisma to PostgreSQL, point Render at an external DATABASE_URL, add DEPLOY.md and gallery/KYC/wallet updates for GitHub push.\n\nCo-authored-by: Cursor \u003ccursoragent@cursor.com\u003e",
+                                      "createdAt":  "2026-08-02T20:08:13Z"
+                                  },
+                       "status":  "build_failed",
+                       "trigger":  "manual",
+                       "createdAt":  "2026-08-02T20:21:33.117643Z",
+                       "updatedAt":  "2026-08-02T20:22:28.906179Z",
+                       "startedAt":  "2026-08-02T20:21:33.111533Z",
+                       "finishedAt":  "2026-08-02T20:22:28.905534Z"
+                   },
+        "cursor":  "nHYmPEBavx1kamZxajVwYzczZmVsZGln"
+    }
+]

@@ -115,9 +115,9 @@ export function verifySumsubWebhookSignature(
 ) {
   const secret = process.env.SUMSUB_WEBHOOK_SECRET?.trim();
   if (!secret) {
-    // If no webhook secret configured, reject in production-minded setups
-    if (process.env.NODE_ENV === "production") return false;
-    return true;
+    // If Sumsub is configured, never accept unsigned webhooks
+    if (isSumsubConfigured()) return false;
+    return process.env.NODE_ENV !== "production";
   }
   if (!digestHeader) return false;
 

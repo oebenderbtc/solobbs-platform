@@ -104,7 +104,11 @@ export default function EscrowPage() {
     });
     setActingId(null);
     if (!res.ok) {
-      notify(dict.common.cancel, "error");
+      const data = await res.json().catch(() => ({}));
+      notify(
+        (data as { error?: string }).error || dict.common.error,
+        "error",
+      );
       return;
     }
     notify(

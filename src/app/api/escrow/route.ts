@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { releaseEscrow } from "@/lib/escrow";
 import { requireKycApproved } from "@/lib/kyc";
+import { tronEscrowDemoMode } from "@/lib/tron-escrow";
 
 const createSchema = z.object({
   title: z.string().min(3),
@@ -59,6 +60,17 @@ export async function POST(req: Request) {
       return NextResponse.json(
         { error: "Solo modelos pueden crear depósitos" },
         { status: 403 },
+      );
+    }
+
+    const settings = await prisma.platformSettings.findUnique({
+      where: { id: "default" },
+    });
+    const minAmount = settings?.minEscrowAmount ?? 50;
+    if (body.amount < minAmount) {
+      return NextResponse.json(
+        { error: `Monto mínimo ${minAmount} USDT` },
+        { status: 400 },
       );
     }
 
@@ -137,10 +149,22 @@ export async function PATCH(req: Request) {
   }
 
   if (body.action === "fund") {
-    // Client must be age/KYC verified before funding a service
-    if (session.user.role === "CLIENT") {
-      const kycBlock = await requireKycApproved(session.user.id);
-      if (kycBlock) return kycBlock;
+    // Fake/simulate fund only in explicit demo mode (never invent money in production)
+    if (!tronEscrowDemoMode()) {
+      return NextResponse.json(
+        {
+          error:
+            "Fondeo simulado desactivado. Usa pago desde billetera o TronLink (P2P).",
+          code: "FAKE_FUND_DISABLED",
+        },
+        { status: 400 },
+      );
+    }
+    if (session.user.role !== "ADMIN") {
+      return NextResponse.json(
+        { error: "Solo admin puede simular fondeo en demo" },
+        { status: 403 },
+      );
     }
     const updated = await prisma.$transaction(async (tx) => {
       let clientId = escrow.clientId;

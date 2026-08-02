@@ -11,6 +11,8 @@ import {
   verifyTronUsdtLock,
 } from "@/lib/tron-escrow";
 import { verifyTronSignature } from "@/lib/tron-verify";
+import { requireKycApproved } from "@/lib/kyc";
+import { getCompanyFeeWallet } from "@/lib/platform-wallets";
 
 function p2pCardBody(amount: number, title: string) {
   return `P2P · ${title} · ${formatUSDT(amount)} · TRON/TronLink`;
@@ -228,6 +230,9 @@ export async function PATCH(req: Request) {
         { status: 403 },
       );
     }
+    const kycBlock = await requireKycApproved(session.user.id);
+    if (kycBlock) return kycBlock;
+
     if (escrow.status !== "PENDING") {
       return NextResponse.json({ error: "Estado inválido" }, { status: 400 });
     }
@@ -238,11 +243,38 @@ export async function PATCH(req: Request) {
       );
     }
 
+    // Prevent replaying the same on-chain payment across escrows
+    const reused = await prisma.escrow.findFirst({
+      where: {
+        OR: [{ lockTxHash: body.txId }, { cryptoTxHash: body.txId }],
+        NOT: { id: escrow.id },
+      },
+      select: { id: true },
+    });
+    if (reused) {
+      return NextResponse.json(
+        { error: "Este hash TRON ya fue usado en otro escrow" },
+        { status: 400 },
+      );
+    }
+    const reusedPayment = await prisma.payment.findFirst({
+      where: { externalId: body.txId },
+      select: { id: true },
+    });
+    if (reusedPayment) {
+      return NextResponse.json(
+        { error: "Este hash TRON ya fue registrado como pago" },
+        { status: 400 },
+      );
+    }
+
     const settings = await prisma.platformSettings.findUnique({
       where: { id: "default" },
     });
     const treasury =
-      settings?.cryptoWalletUsdt || "TSoloBBsDemoUSDT000000000000000000";
+      (await getCompanyFeeWallet()) ||
+      settings?.cryptoWalletUsdt ||
+      "TSoloBBsDemoUSDT000000000000000000";
 
     let verifiedAmount = escrow.amount;
     if (!tronEscrowDemoMode()) {
@@ -354,6 +386,9 @@ export async function PATCH(req: Request) {
         { status: 403 },
       );
     }
+    const kycBlock = await requireKycApproved(session.user.id);
+    if (kycBlock) return kycBlock;
+
     if (escrow.status !== "PENDING") {
       return NextResponse.json({ error: "Estado inválido" }, { status: 400 });
     }

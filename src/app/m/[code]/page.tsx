@@ -113,11 +113,15 @@ export default function PublicModelPage({
     const res = await fetch("/api/inquiries", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ modelId: model.id, message }),
+      body: JSON.stringify({
+        modelId: model.id,
+        modelCode: model.referralCode || code,
+        body: message.trim(),
+      }),
     });
     setSending(false);
     if (!res.ok) {
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       notify(data.error || dict.gallery.contactError, "error");
       return;
     }
@@ -141,15 +145,16 @@ export default function PublicModelPage({
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        modelId: model.id,
+        modelCode: model.referralCode || code,
         title: bookTitle,
         amount: Number(bookAmount),
-        note: bookNote || undefined,
+        paymentMethod: "CRYPTO",
+        notes: bookNote || undefined,
       }),
     });
     setSending(false);
     if (!res.ok) {
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       notify(data.error || dict.gallery.bookError, "error");
       return;
     }

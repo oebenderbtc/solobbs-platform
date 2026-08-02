@@ -1,0 +1,14 @@
+ACTIVE=active
+LISTEN:
+LISTEN 0      200          0.0.0.0:5432       0.0.0.0:*    users:(("postgres",pid=88195,fd=6))                    
+LISTEN 0      200             [::]:5432          [::]:*    users:(("postgres",pid=88195,fd=7))                    
+LOCAL_LOGIN:
+solobbs|solobbs
+LISTEN_ADDR:
+listen_addresses = '*'
+HBA:
+# replication privilege.
+local   replication     all                                     peer
+host    replication     all             127.0.0.1/32            scram-sha-256
+host    replication     all             ::1/128                 scram-sha-256
+host    all             all             0.0.0.0/0               scram-sha-256

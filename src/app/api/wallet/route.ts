@@ -258,15 +258,23 @@ export async function PATCH(req: Request) {
       );
     }
 
-    const me = await prisma.user.findUniqueOrThrow({
-      where: { id: session.user.id },
-      select: {
-        walletBalance: true,
-        tronAddress: true,
-      },
-    });
+    // Reserve balance first (prevents double-spend), then broadcast
+    const reserved = await prisma.$transaction(async (tx) => {
+      const fresh = await tx.user.findUniqueOrThrow({
+        where: { id: session.user.id },
+        select: { walletBalance: true },
+      });
+      if (fresh.walletBalance < amount) {
+        throw new Error("Saldo insuficiente");
+      }
+      return tx.user.update({
+        where: { id: session.user.id },
+        data: { walletBalance: { decrement: amount } },
+        select: { walletBalance: true, tronAddress: true },
+      });
+    }).catch(() => null);
 
-    if (me.walletBalance < amount) {
+    if (!reserved) {
       return NextResponse.json({ error: "Saldo insuficiente" }, { status: 400 });
     }
 
@@ -275,31 +283,23 @@ export async function PATCH(req: Request) {
       toAddress,
       amountUsdt: amount,
     });
+
     if (!sent.ok) {
+      // Refund reserved balance
+      await prisma.user.update({
+        where: { id: session.user.id },
+        data: { walletBalance: { increment: amount } },
+      });
       return NextResponse.json({ error: sent.error }, { status: 400 });
     }
 
     const updated = await prisma.$transaction(async (tx) => {
-      const fresh = await tx.user.findUniqueOrThrow({
-        where: { id: session.user.id },
-        select: { walletBalance: true },
-      });
-      if (fresh.walletBalance < amount) {
-        throw new Error("Saldo insuficiente");
-      }
-
-      const user = await tx.user.update({
-        where: { id: session.user.id },
-        data: { walletBalance: { decrement: amount } },
-        select: { walletBalance: true, tronAddress: true },
-      });
-
       await tx.payment.create({
         data: {
           amount,
           method: "CRYPTO",
           status: "COMPLETED",
-          externalId: `WD-${session.user.id.slice(-4)}-${Date.now().toString(36)}`,
+          externalId: sent.txId || `WD-${session.user.id.slice(-4)}-${Date.now().toString(36)}`,
           cryptoNetwork: "TRON",
           cryptoAddress: toAddress,
           userId: session.user.id,
@@ -317,12 +317,8 @@ export async function PATCH(req: Request) {
         },
       });
 
-      return user;
-    }).catch(() => null);
-
-    if (!updated) {
-      return NextResponse.json({ error: "Saldo insuficiente" }, { status: 400 });
-    }
+      return reserved;
+    });
 
     return NextResponse.json({
       ok: true,

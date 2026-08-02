@@ -48,8 +48,8 @@ export async function smartEscrowLock(input: EscrowLockInput) {
 
 /**
  * Settles release as an automatic multi-pay split (fee + referrals + model).
- * Ledger is always applied by releaseEscrow.
  * On-chain USDT sends run only when TRON_AUTO_SPLIT_ONCHAIN=true and hot wallet is configured.
+ * If on-chain is requested and any send fails, returns ok:false (caller must not RELEASE).
  */
 export async function smartEscrowRelease(input: EscrowReleaseInput) {
   const referralSplits = input.referralSplits || [];
@@ -88,30 +88,64 @@ export async function smartEscrowRelease(input: EscrowReleaseInput) {
   const wantOnChain =
     process.env.TRON_AUTO_SPLIT_ONCHAIN === "true" && !tronEscrowDemoMode();
 
-  let onChainOk = false;
   if (wantOnChain && payouts.length > 0) {
-    onChainOk = true;
     for (const p of payouts) {
       const sent = await sendUsdtToAddress({
         toAddress: p.to,
         amountUsdt: p.amount,
       });
       if (!sent.ok || sent.demo) {
-        onChainOk = false;
-        break;
+        return {
+          ok: false as const,
+          automated: true,
+          onChain: false,
+          demo: false,
+          error:
+            !sent.ok
+              ? `Fallo envío ${p.role}: ${sent.error}`
+              : `Fallo envío ${p.role}: modo demo inesperado`,
+          releaseTxHash: txHashes[0] || "",
+          txHashes,
+          payoutAddress: input.modelPayoutAddress || "internal-ledger",
+          feeToTreasury: input.feeUsdt,
+          netToModel: input.netUsdt,
+          referralTotal,
+          referralSplits,
+          payouts,
+          chain: input.chain || "TRON",
+          contractAddress: input.contractAddress,
+          message: `Split on-chain incompleto en ${p.role}`,
+        };
       }
       txHashes.push(sent.txId);
     }
+
+    return {
+      ok: true as const,
+      automated: true,
+      onChain: true,
+      demo: false,
+      releaseTxHash: txHashes[0] || mockTxHash(""),
+      txHashes,
+      payoutAddress: input.modelPayoutAddress || "internal-ledger",
+      feeToTreasury: input.feeUsdt,
+      netToModel: input.netUsdt,
+      referralTotal,
+      referralSplits,
+      payouts,
+      chain: input.chain || "TRON",
+      contractAddress: input.contractAddress,
+      message: `Split on-chain automático: modelo ${input.netUsdt} · fee ${input.feeUsdt} · referidos ${referralTotal} USDT`,
+    };
   }
 
-  const releaseTxHash =
-    txHashes[0] || mockTxHash(onChainOk ? "" : "tron");
+  const releaseTxHash = txHashes[0] || mockTxHash("tron");
 
   return {
     ok: true as const,
     automated: true,
-    onChain: onChainOk,
-    demo: !onChainOk,
+    onChain: false,
+    demo: true,
     releaseTxHash,
     txHashes,
     payoutAddress: input.modelPayoutAddress || "internal-ledger",
@@ -122,9 +156,7 @@ export async function smartEscrowRelease(input: EscrowReleaseInput) {
     payouts,
     chain: input.chain || "TRON",
     contractAddress: input.contractAddress,
-    message: onChainOk
-      ? `Split on-chain automático: modelo ${input.netUsdt} · fee ${input.feeUsdt} · referidos ${referralTotal} USDT`
-      : `Split automático (ledger): modelo ${input.netUsdt} · fee ${input.feeUsdt} · referidos ${referralTotal} USDT`,
+    message: `Split automático (ledger): modelo ${input.netUsdt} · fee ${input.feeUsdt} · referidos ${referralTotal} USDT`,
   };
 }
 

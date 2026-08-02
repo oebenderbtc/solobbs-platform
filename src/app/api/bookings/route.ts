@@ -63,10 +63,10 @@ export async function POST(req: Request) {
     const settings = await prisma.platformSettings.findUnique({
       where: { id: "default" },
     });
-    const minAmount = settings?.minEscrowAmount ?? 50000;
+    const minAmount = settings?.minEscrowAmount ?? 50;
     if (body.amount < minAmount) {
       return NextResponse.json(
-        { error: `Monto mínimo ${minAmount}` },
+        { error: `Monto mínimo ${minAmount} USDT` },
         { status: 400 },
       );
     }

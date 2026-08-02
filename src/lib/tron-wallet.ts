@@ -3,10 +3,15 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from "crypt
 import { TronWeb } from "tronweb";
 
 function encKey() {
-  const secret =
-    process.env.WALLET_ENC_KEY ||
-    process.env.AUTH_SECRET ||
-    "solobbs-dev-wallet-key";
+  const secret = process.env.WALLET_ENC_KEY || process.env.AUTH_SECRET;
+  if (!secret) {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error(
+        "WALLET_ENC_KEY o AUTH_SECRET requerido para cifrar wallets en producción",
+      );
+    }
+    return createHash("sha256").update("solobbs-dev-wallet-key").digest();
+  }
   return createHash("sha256").update(secret).digest();
 }
 

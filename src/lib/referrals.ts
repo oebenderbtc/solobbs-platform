@@ -78,7 +78,9 @@ export async function computeReferralSplits(
 export async function applyReferralCommissionsLedger(
   sourceUserId: string,
   splits: ReferralSplit[],
+  opts?: { creditWallet?: boolean },
 ) {
+  const creditWallet = opts?.creditWallet !== false;
   for (const split of splits) {
     await prisma.$transaction([
       prisma.commission.create({
@@ -86,7 +88,9 @@ export async function applyReferralCommissionsLedger(
           amount: split.amount,
           level: split.level,
           percent: split.percent,
-          description: `Nivel ${split.level} · referido (auto split)`,
+          description: creditWallet
+            ? `Nivel ${split.level} · referido (auto split)`
+            : `Nivel ${split.level} · referido (pagado on-chain)`,
           earnerId: split.earnerId,
           sourceId: sourceUserId,
         },
@@ -94,7 +98,9 @@ export async function applyReferralCommissionsLedger(
       prisma.user.update({
         where: { id: split.earnerId },
         data: {
-          walletBalance: { increment: split.amount },
+          ...(creditWallet
+            ? { walletBalance: { increment: split.amount } }
+            : {}),
           totalEarned: { increment: split.amount },
         },
       }),
@@ -102,7 +108,9 @@ export async function applyReferralCommissionsLedger(
         data: {
           userId: split.earnerId,
           title: `Comisión nivel ${split.level}`,
-          body: `Recibiste ${formatUSDT(split.amount)} por tu red (split automático al liberar).`,
+          body: creditWallet
+            ? `Recibiste ${formatUSDT(split.amount)} por tu red (split automático al liberar).`
+            : `Comisión ${formatUSDT(split.amount)} enviada on-chain a tu wallet TRON.`,
           link: "/dashboard/network",
         },
       }),

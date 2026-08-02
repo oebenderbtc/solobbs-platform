@@ -65,6 +65,18 @@ export async function releaseEscrow(
     referralSplits,
   });
 
+  if (!onChain.ok) {
+    throw new Error(
+      "error" in onChain && onChain.error
+        ? onChain.error
+        : "No se pudo completar el split on-chain",
+    );
+  }
+
+  // If USDT already left on-chain, do NOT also credit withdrawable ledger balances
+  // (that would double-pay from the gas wallet on later withdraw).
+  const creditLedgerBalances = !onChain.onChain;
+
   await prisma.$transaction([
     prisma.escrow.update({
       where: { id: escrowId },
@@ -76,12 +88,12 @@ export async function releaseEscrow(
         notes: `Auto-split · fee ${feeUsdt} · referidos ${referralTotal} · neto ${net} · ${onChain.message}`,
       },
     }),
-    // If on-chain payout succeeded, USDT already left treasury — still mirror on ledger
-    // so SoloBBs balances stay consistent for spending/withdraw UX.
     prisma.user.update({
       where: { id: escrow.modelId },
       data: {
-        walletBalance: { increment: net },
+        ...(creditLedgerBalances
+          ? { walletBalance: { increment: net } }
+          : {}),
         escrowHeld: { decrement: escrow.amount },
         totalEarned: { increment: net },
         totalJobs: { increment: 1 },
@@ -98,14 +110,20 @@ export async function releaseEscrow(
     prisma.notification.create({
       data: {
         userId: escrow.modelId,
-        title: "Escrow liberado (split automático)",
-        body: `Neto ${formatUSDT(net)} · fee plataforma ${formatUSDT(feeUsdt)} · comisiones red ${formatUSDT(referralTotal)}.`,
+        title: onChain.onChain
+          ? "Escrow liberado (pago on-chain)"
+          : "Escrow liberado (split automático)",
+        body: onChain.onChain
+          ? `Neto ${formatUSDT(net)} enviado a tu wallet TRON. Fee ${formatUSDT(feeUsdt)} · red ${formatUSDT(referralTotal)}.`
+          : `Neto ${formatUSDT(net)} · fee plataforma ${formatUSDT(feeUsdt)} · comisiones red ${formatUSDT(referralTotal)}.`,
         link: "/dashboard/wallet",
       },
     }),
   ]);
 
-  await applyReferralCommissionsLedger(escrow.modelId, referralSplits);
+  await applyReferralCommissionsLedger(escrow.modelId, referralSplits, {
+    creditWallet: creditLedgerBalances,
+  });
 
   return {
     net,
@@ -114,5 +132,6 @@ export async function releaseEscrow(
     referralSplits,
     releaseTxHash: onChain.releaseTxHash,
     automated: true,
+    onChain: onChain.onChain,
   };
 }
