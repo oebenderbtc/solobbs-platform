@@ -4,30 +4,6 @@ import { useState } from "react";
 import { Loader2, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-type TronProvider = {
-  request: (args: {
-    method: string;
-    params?: Record<string, unknown>;
-  }) => Promise<unknown>;
-  tronWeb?: {
-    defaultAddress?: { base58?: string };
-    trx?: {
-      signMessageV2?: (msg: string) => Promise<string>;
-    };
-  };
-};
-
-declare global {
-  interface Window {
-    tronLink?: TronProvider;
-    tronWeb?: TronProvider["tronWeb"] & {
-      ready?: boolean;
-      defaultAddress?: { base58?: string };
-      trx?: { signMessageV2?: (msg: string) => Promise<string> };
-    };
-  }
-}
-
 async function getTronAddress(): Promise<string> {
   if (typeof window === "undefined") {
     throw new Error("Solo disponible en el navegador");

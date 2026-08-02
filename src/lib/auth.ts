@@ -70,7 +70,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             ...rest,
           });
           if ("error" in result) {
-            throw new TronAuthError(result.error);
+            throw new TronAuthError(result.error || "Error de autenticación TRON");
           }
           return {
             id: result.user.id,

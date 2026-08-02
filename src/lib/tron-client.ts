@@ -1,35 +1,10 @@
 "use client";
 
+import type { TronWebLike } from "@/types/tron";
+
 const USDT_TRC20 =
   process.env.NEXT_PUBLIC_TRON_USDT_CONTRACT ||
   "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t";
-
-type TronWebLike = {
-  ready?: boolean;
-  defaultAddress?: { base58?: string };
-  toSun?: (v: number) => number;
-  contract?: () => {
-    at: (addr: string) => Promise<{
-      transfer: (
-        to: string,
-        amount: number,
-      ) => { send: (opts?: { feeLimit?: number }) => Promise<string> };
-    }>;
-  };
-  trx?: {
-    signMessageV2?: (msg: string) => Promise<string>;
-  };
-};
-
-declare global {
-  interface Window {
-    tronLink?: {
-      request: (args: { method: string }) => Promise<unknown>;
-      tronWeb?: TronWebLike;
-    };
-    tronWeb?: TronWebLike;
-  }
-}
 
 export async function connectTronWallet(): Promise<string> {
   if (typeof window === "undefined") {
