@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { FormEvent, Suspense, useState } from "react";
+import { FormEvent, Suspense, useRef, useState } from "react";
 import { signIn } from "next-auth/react";
 import { motion, useReducedMotion } from "framer-motion";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { Logo } from "@/components/Logo";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { SimpleCaptcha } from "@/components/SimpleCaptcha";
 import { TronWalletButton } from "@/components/TronWalletButton";
 import { Toast } from "@/components/ui/Toast";
 import { easeOut } from "@/components/ui/motion";
@@ -27,21 +28,35 @@ function LoginForm() {
   const [loading, setLoading] = useState(false);
   const [showPass, setShowPass] = useState(false);
   const [toast, setToast] = useState(false);
+  const [captcha, setCaptcha] = useState({ token: "", answer: "" });
+  const captchaRef = useRef(captcha);
+  captchaRef.current = captcha;
   const callbackUrl = safeCallback(params.get("callbackUrl"));
 
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (!captcha.token || !captcha.answer.trim()) {
+      setError(dict.auth.captchaRequired);
+      return;
+    }
     setLoading(true);
     setError("");
     const form = new FormData(e.currentTarget);
     const res = await signIn("credentials", {
       email: String(form.get("email")),
       password: String(form.get("password")),
+      captchaToken: captcha.token,
+      captchaAnswer: captcha.answer,
       redirect: false,
     });
     setLoading(false);
     if (res?.error) {
-      setError(dict.auth.loginError);
+      const code = (res as { code?: string }).code;
+      setError(
+        code && /captcha|Captcha|verific/i.test(code)
+          ? code
+          : dict.auth.loginError,
+      );
       return;
     }
     setToast(true);
@@ -81,17 +96,25 @@ function LoginForm() {
         </h1>
         <p className="mt-2 text-sm text-mist">{dict.auth.loginSubtitle}</p>
         <div className="mt-8 space-y-4">
+          <SimpleCaptcha onChange={setCaptcha} />
           <TronWalletButton
             mode="login"
             label={dict.auth.tronLogin}
             loadingLabel={dict.auth.tronConnecting}
             onError={(msg) => setError(msg)}
             onSuccess={async (payload) => {
+              const cap = captchaRef.current;
+              if (!cap.token || !cap.answer.trim()) {
+                setError(dict.auth.captchaRequired);
+                return;
+              }
               setError("");
               setLoading(true);
               const res = await signIn("credentials", {
                 ...payload,
                 mode: "login",
+                captchaToken: cap.token,
+                captchaAnswer: cap.answer,
                 redirect: false,
               });
               setLoading(false);

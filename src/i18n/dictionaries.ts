@@ -175,6 +175,10 @@ const es = {
     acceptTerms: "Acepto los",
     acceptTermsLink: "Términos y Condiciones",
     acceptTermsRequired: "Debes aceptar los Términos y Condiciones",
+    captchaLabel: "Verificación: ¿cuánto es?",
+    captchaPlaceholder: "Resultado",
+    captchaRefresh: "Nueva pregunta",
+    captchaRequired: "Resuelve el captcha para continuar",
   },
   legal: {
     eyebrow: "Legal",
@@ -946,6 +950,10 @@ const en = {
     acceptTerms: "I accept the",
     acceptTermsLink: "Terms and Conditions",
     acceptTermsRequired: "You must accept the Terms and Conditions",
+    captchaLabel: "Verification: what is?",
+    captchaPlaceholder: "Answer",
+    captchaRefresh: "New question",
+    captchaRequired: "Solve the captcha to continue",
   },
   legal: {
     eyebrow: "Legal",

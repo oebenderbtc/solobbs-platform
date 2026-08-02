@@ -4,6 +4,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { generateReferralCode } from "@/lib/utils";
 import { generateCustodialTronWallet } from "@/lib/tron-wallet";
+import { verifyMathCaptcha } from "@/lib/simple-captcha";
 
 const schema = z.object({
   name: z.string().min(2),
@@ -13,11 +14,17 @@ const schema = z.object({
   phone: z.string().optional(),
   referralCode: z.string().optional(),
   role: z.enum(["MODEL", "CLIENT"]).default("MODEL"),
+  captchaToken: z.string().min(8),
+  captchaAnswer: z.string().min(1),
 });
 
 export async function POST(req: Request) {
   try {
     const body = schema.parse(await req.json());
+    const captcha = verifyMathCaptcha(body.captchaToken, body.captchaAnswer);
+    if (!captcha.ok) {
+      return NextResponse.json({ error: captcha.error }, { status: 400 });
+    }
     const email = body.email.toLowerCase();
 
     const exists = await prisma.user.findUnique({ where: { email } });

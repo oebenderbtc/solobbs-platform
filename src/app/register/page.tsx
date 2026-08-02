@@ -8,6 +8,7 @@ import { motion, useReducedMotion } from "framer-motion";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { Logo } from "@/components/Logo";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { SimpleCaptcha } from "@/components/SimpleCaptcha";
 import { TronWalletButton } from "@/components/TronWalletButton";
 import { Toast } from "@/components/ui/Toast";
 import { easeOut } from "@/components/ui/motion";
@@ -24,6 +25,9 @@ function RegisterForm() {
   const [toast, setToast] = useState(false);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const acceptedTermsRef = useRef(false);
+  const [captcha, setCaptcha] = useState({ token: "", answer: "" });
+  const captchaRef = useRef(captcha);
+  captchaRef.current = captcha;
   const defaultRef = params.get("ref") || "";
   const defaultRole = params.get("role") === "CLIENT" ? "CLIENT" : "MODEL";
   const [role, setRole] = useState<"MODEL" | "CLIENT">(defaultRole);
@@ -45,6 +49,10 @@ function RegisterForm() {
       setError(dict.auth.acceptTermsRequired);
       return;
     }
+    if (!captcha.token || !captcha.answer.trim()) {
+      setError(dict.auth.captchaRequired);
+      return;
+    }
     setLoading(true);
     setError("");
     const form = new FormData(e.currentTarget);
@@ -56,6 +64,8 @@ function RegisterForm() {
       phone: String(form.get("phone") || ""),
       referralCode: String(form.get("referralCode") || ""),
       role,
+      captchaToken: captcha.token,
+      captchaAnswer: captcha.answer,
     };
 
     const res = await fetch("/api/register", {
@@ -73,6 +83,8 @@ function RegisterForm() {
     await signIn("credentials", {
       email: payload.email,
       password: payload.password,
+      captchaToken: captcha.token,
+      captchaAnswer: captcha.answer,
       redirect: false,
     });
     setToast(true);
@@ -132,6 +144,8 @@ function RegisterForm() {
             </span>
           </label>
 
+          <SimpleCaptcha onChange={setCaptcha} />
+
           <TronWalletButton
             mode="register"
             role={role}
@@ -142,6 +156,11 @@ function RegisterForm() {
             onSuccess={async (payload) => {
               if (!acceptedTermsRef.current) {
                 setError(dict.auth.acceptTermsRequired);
+                return;
+              }
+              const cap = captchaRef.current;
+              if (!cap.token || !cap.answer.trim()) {
+                setError(dict.auth.captchaRequired);
                 return;
               }
               setError("");
@@ -157,6 +176,8 @@ function RegisterForm() {
                 role,
                 referralCode: referralCode || undefined,
                 mode: "register",
+                captchaToken: cap.token,
+                captchaAnswer: cap.answer,
                 redirect: false,
               });
               if (res?.error) {
