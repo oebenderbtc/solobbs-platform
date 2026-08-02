@@ -52,3 +52,8 @@ prisma/*.db
 prisma/*.db-journal
 *.db
 *.db-journal
+
+# local ops / render CLI
+tools/
+scripts/pg-check.txt
+
