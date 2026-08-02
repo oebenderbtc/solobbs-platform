@@ -20,10 +20,12 @@ import {
   Star,
   Images,
   MessageCircle,
+  BadgeCheck,
 } from "lucide-react";
 import { Logo } from "./Logo";
 import { PanelCoach } from "./PanelCoach";
 import { LanguageSwitcher } from "./LanguageSwitcher";
+import { CurrencySwitcher } from "./CurrencySwitcher";
 import { NotificationBell } from "./NotificationBell";
 import { cn } from "@/lib/utils";
 import { signOut } from "next-auth/react";
@@ -73,6 +75,7 @@ export function DashboardShell({
           { href: "/dashboard/messages", label: dict.shell.clientNav.messages, icon: MessageCircle },
           { href: "/dashboard/payment-methods", label: dict.shell.clientNav.paymentMethods, icon: CreditCard },
           { href: "/dashboard/reviews", label: dict.shell.clientNav.reviews, icon: Star },
+          { href: "/dashboard/kyc", label: dict.shell.clientNav.kyc, icon: BadgeCheck },
           { href: "/dashboard/settings", label: dict.shell.clientNav.profile, icon: Settings },
         ]
       : [
@@ -85,6 +88,7 @@ export function DashboardShell({
           { href: "/dashboard/wallet", label: dict.shell.modelNav.wallet, icon: Wallet },
           { href: "/dashboard/network", label: dict.shell.modelNav.network, icon: Network },
           { href: "/dashboard/reviews", label: dict.shell.modelNav.reviews, icon: Star },
+          { href: "/dashboard/kyc", label: dict.shell.modelNav.kyc, icon: BadgeCheck },
           { href: "/dashboard/settings", label: dict.shell.modelNav.profile, icon: Settings },
         ];
 
@@ -100,7 +104,10 @@ export function DashboardShell({
       <div className="px-5 py-5">
         <div className="flex items-start justify-between gap-2">
           <Logo href={homeHref} size={48} />
-          <LanguageSwitcher className="mt-1 hidden lg:inline-flex" />
+          <div className="mt-1 hidden flex-col items-end gap-1.5 lg:flex">
+            <CurrencySwitcher />
+            <LanguageSwitcher />
+          </div>
         </div>
         <motion.div
           initial={reduce ? false : { opacity: 0, y: 8 }}
@@ -174,6 +181,7 @@ export function DashboardShell({
         <Logo href={homeHref} size={44} />
         <div className="flex items-center gap-2">
           <NotificationBell />
+          <CurrencySwitcher className="hidden sm:inline-flex" />
           <LanguageSwitcher />
           <button
             type="button"
@@ -213,6 +221,7 @@ export function DashboardShell({
 
       <div className="min-w-0">
         <div className="sticky top-0 z-20 hidden items-center justify-end gap-3 border-b border-line bg-ink/70 px-7 py-3 backdrop-blur-xl lg:flex lg:px-10">
+          <CurrencySwitcher />
           <NotificationBell />
           <LanguageSwitcher />
         </div>

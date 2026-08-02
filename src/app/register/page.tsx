@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { FormEvent, Suspense, useState } from "react";
+import { FormEvent, Suspense, useRef, useState } from "react";
 import { signIn } from "next-auth/react";
 import { motion, useReducedMotion } from "framer-motion";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { Logo } from "@/components/Logo";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { TronWalletButton } from "@/components/TronWalletButton";
 import { Toast } from "@/components/ui/Toast";
 import { easeOut } from "@/components/ui/motion";
 import { useLocale } from "@/i18n/LocaleProvider";
@@ -21,12 +22,29 @@ function RegisterForm() {
   const [loading, setLoading] = useState(false);
   const [showPass, setShowPass] = useState(false);
   const [toast, setToast] = useState(false);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const acceptedTermsRef = useRef(false);
   const defaultRef = params.get("ref") || "";
   const defaultRole = params.get("role") === "CLIENT" ? "CLIENT" : "MODEL";
   const [role, setRole] = useState<"MODEL" | "CLIENT">(defaultRole);
+  const callbackRaw = params.get("callbackUrl");
+  const callbackUrl =
+    callbackRaw && callbackRaw.startsWith("/") && !callbackRaw.startsWith("//")
+      ? callbackRaw
+      : "/dashboard";
+
+  function setTerms(next: boolean) {
+    acceptedTermsRef.current = next;
+    setAcceptedTerms(next);
+    if (next) setError("");
+  }
 
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (!acceptedTermsRef.current) {
+      setError(dict.auth.acceptTermsRequired);
+      return;
+    }
     setLoading(true);
     setError("");
     const form = new FormData(e.currentTarget);
@@ -59,7 +77,7 @@ function RegisterForm() {
     });
     setToast(true);
     setLoading(false);
-    router.push("/dashboard");
+    router.push(callbackUrl);
     router.refresh();
   }
 
@@ -73,7 +91,7 @@ function RegisterForm() {
       >
         <h1 className="font-display text-3xl tracking-tight">{dict.auth.registerTitle}</h1>
         <p className="mt-2 text-sm text-mist">{dict.auth.registerSubtitle}</p>
-        <form onSubmit={onSubmit} className="mt-8 space-y-4">
+        <form id="register-form" onSubmit={onSubmit} className="mt-8 space-y-4">
           <div className="flex gap-2 rounded-2xl bg-ink/45 p-1">
             <button
               type="button"
@@ -94,6 +112,75 @@ function RegisterForm() {
               Cliente
             </button>
           </div>
+
+          <label className="flex items-start gap-2.5 text-sm text-mist">
+            <input
+              type="checkbox"
+              checked={acceptedTerms}
+              onChange={(e) => setTerms(e.target.checked)}
+              className="mt-1 h-4 w-4 rounded border-line bg-ink accent-champagne"
+            />
+            <span>
+              {dict.auth.acceptTerms}{" "}
+              <Link
+                href="/terms"
+                target="_blank"
+                className="text-champagne hover:underline"
+              >
+                {dict.auth.acceptTermsLink}
+              </Link>
+            </span>
+          </label>
+
+          <TronWalletButton
+            mode="register"
+            role={role}
+            label={dict.auth.tronRegister}
+            loadingLabel={dict.auth.tronConnecting}
+            className={!acceptedTerms ? "pointer-events-none opacity-40" : undefined}
+            onError={(msg) => setError(msg)}
+            onSuccess={async (payload) => {
+              if (!acceptedTermsRef.current) {
+                setError(dict.auth.acceptTermsRequired);
+                return;
+              }
+              setError("");
+              const form = document.getElementById("register-form") as HTMLFormElement | null;
+              const fd = form ? new FormData(form) : null;
+              const name = fd ? String(fd.get("name") || "") : "";
+              const referralCode = fd
+                ? String(fd.get("referralCode") || defaultRef)
+                : defaultRef;
+              const res = await signIn("credentials", {
+                ...payload,
+                name: name || undefined,
+                role,
+                referralCode: referralCode || undefined,
+                mode: "register",
+                redirect: false,
+              });
+              if (res?.error) {
+                setError(
+                  (res as { code?: string }).code ||
+                    dict.auth.registerError,
+                );
+                return;
+              }
+              setToast(true);
+              router.push(callbackUrl);
+              router.refresh();
+            }}
+          />
+          <p className="text-center text-[11px] text-mist/70">{dict.auth.tronHint}</p>
+
+          <div className="relative my-2 flex items-center gap-3">
+            <div className="h-px flex-1 bg-line" />
+            <span className="text-[11px] uppercase tracking-wider text-mist">
+              {dict.auth.orContinue}
+            </span>
+            <div className="h-px flex-1 bg-line" />
+          </div>
+
           <div>
             <label className="mb-2 block text-sm text-mist" htmlFor="name">
               {role === "MODEL" ? dict.auth.stageName : dict.auth.email === "Email" ? "Name" : "Nombre"}
@@ -192,6 +279,11 @@ function RegisterForm() {
           {dict.auth.haveAccount}{" "}
           <Link href="/login" className="text-champagne hover:underline">
             {dict.auth.loginCta}
+          </Link>
+        </p>
+        <p className="mt-3 text-center text-xs text-mist">
+          <Link href="/terms" className="text-champagne/90 hover:underline">
+            {dict.legal.termsNav}
           </Link>
         </p>
       </motion.div>

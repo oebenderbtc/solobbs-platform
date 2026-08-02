@@ -1,109 +1,251 @@
+"use client";
+
+import { FormEvent, use, useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { notFound } from "next/navigation";
-import { MapPin, ShieldCheck } from "lucide-react";
-import { prisma } from "@/lib/prisma";
-import { SiteHeader } from "@/components/SiteHeader";
-import { StarRating } from "@/components/StarRating";
-import { ContactModelForm } from "@/components/ContactModelForm";
-import { formatCOP } from "@/lib/utils";
-import { getDictionary } from "@/i18n/server";
+import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
+import { Film, Loader2, MessageSquare, Send } from "lucide-react";
+import { StoryRing, StoryViewer, type StoryItem } from "@/components/StoryViewer";
+import { PriceLabel } from "@/components/PriceLabel";
+import { CurrencySwitcher } from "@/components/CurrencySwitcher";
+import { Toast, ToastTone } from "@/components/ui/Toast";
+import { useLocale } from "@/i18n/LocaleProvider";
 
-export default async function ModelPublicPage({
+type GalleryItem = {
+  id: string;
+  url: string;
+  mediaType?: string;
+  caption: string | null;
+  isCover: boolean;
+};
+
+type Model = {
+  id: string;
+  name: string;
+  referralCode: string;
+  bio: string | null;
+  rateFrom: number | null;
+  avatarUrl: string | null;
+  gallery: GalleryItem[];
+};
+
+export default function PublicModelPage({
   params,
 }: {
   params: Promise<{ code: string }>;
 }) {
-  const { code } = await params;
-  const dict = await getDictionary();
+  const { code } = use(params);
+  const router = useRouter();
+  const { data: session, status } = useSession();
+  const { dict } = useLocale();
+  const [model, setModel] = useState<Model | null>(null);
+  const [stories, setStories] = useState<StoryItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [notFound, setNotFound] = useState(false);
+  const [message, setMessage] = useState("");
+  const [bookTitle, setBookTitle] = useState("");
+  const [bookAmount, setBookAmount] = useState("");
+  const [bookNote, setBookNote] = useState("");
+  const [sending, setSending] = useState(false);
+  const [tab, setTab] = useState<"message" | "book">("message");
+  const [viewStories, setViewStories] = useState(false);
+  const [toast, setToast] = useState<{
+    open: boolean;
+    message: string;
+    tone: ToastTone;
+  }>({ open: false, message: "", tone: "success" });
 
-  const model = await prisma.user.findFirst({
-    where: {
-      referralCode: code.toUpperCase(),
-      role: "MODEL",
-      isActive: true,
-      galleryPublic: true,
-    },
-    include: {
-      galleryImages: {
-        orderBy: [{ isCover: "desc" }, { sortOrder: "asc" }, { createdAt: "asc" }],
-      },
-      reviewsReceived: {
-        take: 5,
-        orderBy: { createdAt: "desc" },
-        include: { author: { select: { name: true } }, job: { select: { title: true } } },
-      },
-      _count: { select: { jobsAsModel: true, reviewsReceived: true } },
-    },
-  });
+  const isClient = session?.user?.role === "CLIENT";
+  const isGuest = !session?.user;
+  const blockedAsNonClient =
+    status === "authenticated" && session?.user && !isClient;
+  const canContact = !blockedAsNonClient;
 
-  if (!model) notFound();
+  function notify(msg: string, tone: ToastTone = "success") {
+    setToast({ open: true, message: msg, tone });
+    window.setTimeout(() => setToast((t) => ({ ...t, open: false })), 2200);
+  }
+
+  function requireClientAuth() {
+    const callback = `/m/${model?.referralCode || code}`;
+    notify(dict.gallery.loginToContact, "error");
+    router.push(
+      `/register?role=CLIENT&callbackUrl=${encodeURIComponent(callback)}`,
+    );
+  }
+
+  useEffect(() => {
+    async function load() {
+      const res = await fetch(`/api/gallery?code=${encodeURIComponent(code)}`);
+      if (!res.ok) {
+        setNotFound(true);
+        setLoading(false);
+        return;
+      }
+      const data = await res.json();
+      setModel(data.model);
+      if (data.model?.rateFrom) setBookAmount(String(data.model.rateFrom));
+      const sRes = await fetch(
+        `/api/stories?modelCode=${encodeURIComponent(code)}`,
+      );
+      if (sRes.ok) {
+        const sData = await sRes.json();
+        setStories(sData.stories || []);
+      }
+      setLoading(false);
+    }
+    load();
+  }, [code]);
+
+  async function sendMessage(e: FormEvent) {
+    e.preventDefault();
+    if (!model || !message.trim()) return;
+    if (!session?.user) {
+      requireClientAuth();
+      return;
+    }
+    if (!isClient) {
+      notify(dict.gallery.clientsOnly, "error");
+      return;
+    }
+    setSending(true);
+    const res = await fetch("/api/inquiries", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ modelId: model.id, message }),
+    });
+    setSending(false);
+    if (!res.ok) {
+      const data = await res.json();
+      notify(data.error || dict.gallery.contactError, "error");
+      return;
+    }
+    setMessage("");
+    notify(dict.gallery.messageSent);
+  }
+
+  async function sendBooking(e: FormEvent) {
+    e.preventDefault();
+    if (!model) return;
+    if (!session?.user) {
+      requireClientAuth();
+      return;
+    }
+    if (!isClient) {
+      notify(dict.gallery.clientsOnly, "error");
+      return;
+    }
+    setSending(true);
+    const res = await fetch("/api/bookings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        modelId: model.id,
+        title: bookTitle,
+        amount: Number(bookAmount),
+        note: bookNote || undefined,
+      }),
+    });
+    setSending(false);
+    if (!res.ok) {
+      const data = await res.json();
+      notify(data.error || dict.gallery.bookError, "error");
+      return;
+    }
+    setBookTitle("");
+    setBookNote("");
+    notify(dict.gallery.bookSent);
+  }
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-ink text-mist">
+        {dict.common.loading}
+      </div>
+    );
+  }
+
+  if (notFound || !model) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-ink px-4 text-center">
+        <p className="font-display text-3xl text-cream">404</p>
+        <p className="text-mist">{dict.gallery.noModels}</p>
+        <Link href="/models" className="btn-primary">
+          {dict.gallery.browseModels}
+        </Link>
+      </div>
+    );
+  }
 
   const cover =
-    model.galleryImages.find((i) => i.isCover)?.url ||
-    model.avatarUrl ||
-    "/mark.svg";
+    model.gallery.find((g) => g.isCover && g.mediaType !== "VIDEO") ||
+    model.gallery.find((g) => g.mediaType !== "VIDEO") ||
+    null;
 
   return (
-    <div className="noise min-h-screen">
-      <SiteHeader />
-      <main className="mx-auto max-w-6xl px-5 pb-20 pt-28 sm:px-6">
-        <div className="grid gap-8 lg:grid-cols-[1.15fr_0.85fr]">
-          <div>
-            <div className="relative aspect-[4/5] overflow-hidden rounded-[2rem] border border-line sm:aspect-[5/4]">
-              <Image
-                src={cover}
-                alt={model.name}
-                fill
-                className="object-cover"
-                sizes="(max-width:1024px) 100vw, 60vw"
-                priority
-                unoptimized
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-ink via-transparent to-transparent" />
-              <div className="absolute bottom-0 left-0 right-0 p-6 sm:p-8">
-                <p className="text-[11px] uppercase tracking-[0.22em] text-blush">
-                  {dict.gallery.publicProfile}
-                </p>
-                <h1 className="mt-2 font-display text-4xl tracking-tight sm:text-5xl">
-                  {model.name}
-                </h1>
-                <div className="mt-3 flex flex-wrap items-center gap-3 text-sm text-cream/85">
-                  {model.city && (
-                    <span className="inline-flex items-center gap-1">
-                      <MapPin className="h-3.5 w-3.5 text-champagne" />
-                      {model.city}
-                    </span>
-                  )}
-                  <span className="inline-flex items-center gap-1.5">
-                    <StarRating value={model.rating} size="sm" />
-                    {model.rating.toFixed(1)}
-                  </span>
-                  {model.isVerified && (
-                    <span className="inline-flex items-center gap-1 text-champagne">
-                      <ShieldCheck className="h-3.5 w-3.5" />
-                      {dict.settingsPage.verified}
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
+    <div className="min-h-screen bg-ink text-cream">
+      <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(212,175,106,0.12),_transparent_55%)]" />
+      <div className="relative mx-auto max-w-5xl px-4 py-8 sm:px-6">
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+          <Link href="/" className="font-display text-2xl tracking-[0.14em]">
+            Solo<span className="text-champagne">BBs</span>
+          </Link>
+          <div className="flex items-center gap-2 sm:gap-3">
+            <CurrencySwitcher />
+            <Link href="/models" className="text-sm text-mist hover:text-cream">
+              {dict.gallery.browseModels}
+            </Link>
+          </div>
+        </div>
 
-            {model.galleryImages.length > 1 && (
-              <div className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-4">
-                {model.galleryImages.map((img) => (
+        <div className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr]">
+          <div className="space-y-4">
+            <div className="relative aspect-[4/5] overflow-hidden rounded-[2rem] border border-line bg-panel">
+              {cover ? (
+                <Image
+                  src={cover.url}
+                  alt={model.name}
+                  fill
+                  className="object-cover"
+                  unoptimized
+                  priority
+                />
+              ) : (
+                <div className="flex h-full items-center justify-center text-mist">
+                  {dict.gallery.emptyTitle}
+                </div>
+              )}
+            </div>
+            {model.gallery.length > 1 && (
+              <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                {model.gallery.map((img) => (
                   <div
                     key={img.id}
-                    className="relative aspect-square overflow-hidden rounded-2xl border border-line"
+                    className="relative aspect-square overflow-hidden rounded-xl border border-line"
                   >
-                    <Image
-                      src={img.url}
-                      alt={img.caption || model.name}
-                      fill
-                      className="object-cover"
-                      sizes="150px"
-                      unoptimized
-                    />
+                    {img.mediaType === "VIDEO" ? (
+                      <>
+                        <video
+                          src={img.url}
+                          className="h-full w-full object-cover"
+                          muted
+                          playsInline
+                          controls
+                        />
+                        <span className="pointer-events-none absolute left-1 top-1 rounded bg-black/60 p-0.5">
+                          <Film className="h-3 w-3 text-cream" />
+                        </span>
+                      </>
+                    ) : (
+                      <Image
+                        src={img.url}
+                        alt={img.caption || model.name}
+                        fill
+                        className="object-cover"
+                        unoptimized
+                      />
+                    )}
                   </div>
                 ))}
               </div>
@@ -111,60 +253,156 @@ export default async function ModelPublicPage({
           </div>
 
           <div className="space-y-5">
-            <div className="surface rounded-[1.75rem] p-5 sm:p-6">
-              <h2 className="font-display text-2xl tracking-tight">{dict.gallery.about}</h2>
-              <p className="mt-3 text-[15px] leading-relaxed text-mist">
-                {model.bio || dict.gallery.noBio}
-              </p>
-              <div className="mt-5 grid grid-cols-2 gap-3">
-                <div className="rounded-2xl bg-ink/45 px-4 py-3">
-                  <p className="text-xs uppercase tracking-[0.14em] text-mist">
-                    {dict.dashboard.jobs}
+            <div className="flex items-center gap-4">
+              <StoryRing
+                hasStories={stories.length > 0}
+                avatarUrl={model.avatarUrl || cover?.url}
+                name={model.name}
+                size="lg"
+                onClick={() => stories.length > 0 && setViewStories(true)}
+              />
+              <div className="min-w-0 flex-1">
+                <p className="text-[11px] uppercase tracking-[0.2em] text-champagne">
+                  {dict.gallery.publicProfile}
+                </p>
+                <h1 className="mt-1 truncate font-display text-3xl tracking-tight sm:text-4xl">
+                  {model.name}
+                </h1>
+                <p className="mt-1 font-mono text-sm text-mist">
+                  {model.referralCode}
+                  {stories.length > 0 ? (
+                    <span className="text-mist/70">
+                      {" "}
+                      · {stories.length} {dict.gallery.storiesTitle.toLowerCase()}
+                    </span>
+                  ) : null}
+                </p>
+                {model.rateFrom != null && (
+                  <p className="mt-2 text-base text-champagne sm:text-lg">
+                    <PriceLabel
+                      amountUsdt={model.rateFrom}
+                      prefix={dict.gallery.from}
+                    />
                   </p>
-                  <p className="mt-1 text-xl text-cream">{model._count.jobsAsModel}</p>
-                </div>
-                <div className="rounded-2xl bg-ink/45 px-4 py-3">
-                  <p className="text-xs uppercase tracking-[0.14em] text-mist">
-                    {dict.gallery.rateFrom}
-                  </p>
-                  <p className="mt-1 text-xl text-champagne">
-                    {model.rateFrom ? formatCOP(model.rateFrom) : "—"}
-                  </p>
-                </div>
+                )}
               </div>
             </div>
 
-            <ContactModelForm
-              modelCode={model.referralCode}
-              modelName={model.name}
-              defaultAmount={model.rateFrom}
-            />
+            <div className="surface rounded-2xl p-5">
+              <h2 className="font-display text-xl">{dict.gallery.about}</h2>
+              <p className="mt-2 text-sm leading-relaxed text-mist">
+                {model.bio || dict.gallery.noBio}
+              </p>
+            </div>
 
-            {model.reviewsReceived.length > 0 && (
-              <div className="surface rounded-[1.75rem] p-5 sm:p-6">
-                <h2 className="font-display text-2xl tracking-tight">{dict.reviews.received}</h2>
-                <div className="mt-4 space-y-3">
-                  {model.reviewsReceived.map((r) => (
-                    <div key={r.id} className="rounded-2xl bg-ink/45 px-4 py-3">
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="text-sm font-medium">{r.author.name}</p>
-                        <StarRating value={r.rating} size="sm" />
-                      </div>
-                      <p className="mt-2 text-sm text-mist">
-                        {r.comment || dict.reviews.noComment}
-                      </p>
-                    </div>
-                  ))}
+            {!canContact ? (
+              <div className="surface rounded-2xl p-5 text-sm text-mist">
+                {dict.gallery.clientsOnly}
+              </div>
+            ) : (
+              <div className="surface rounded-2xl p-5">
+                <div className="mb-4 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setTab("message")}
+                    className={`rounded-full px-3 py-1.5 text-xs ${
+                      tab === "message"
+                        ? "bg-champagne/20 text-champagne"
+                        : "text-mist"
+                    }`}
+                  >
+                    <MessageSquare className="mr-1 inline h-3.5 w-3.5" />
+                    {dict.gallery.tabMessage}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTab("book")}
+                    className={`rounded-full px-3 py-1.5 text-xs ${
+                      tab === "book"
+                        ? "bg-champagne/20 text-champagne"
+                        : "text-mist"
+                    }`}
+                  >
+                    {dict.gallery.tabBook}
+                  </button>
                 </div>
+
+                {tab === "message" ? (
+                  <form onSubmit={sendMessage} className="space-y-3">
+                    <textarea
+                      value={message}
+                      onChange={(e) => setMessage(e.target.value)}
+                      rows={4}
+                      required
+                      className="input-field min-h-[100px] resize-y"
+                      placeholder={dict.gallery.messagePlaceholder}
+                    />
+                    <button
+                      disabled={sending}
+                      className="btn-primary w-full !py-3"
+                    >
+                      {sending ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <>
+                          <Send className="h-4 w-4" /> {dict.gallery.sendMessage}
+                        </>
+                      )}
+                    </button>
+                  </form>
+                ) : (
+                  <form onSubmit={sendBooking} className="space-y-3">
+                    <input
+                      value={bookTitle}
+                      onChange={(e) => setBookTitle(e.target.value)}
+                      required
+                      className="input-field"
+                      placeholder={dict.gallery.bookTitle}
+                    />
+                    <input
+                      type="number"
+                      min={1}
+                      step={1}
+                      value={bookAmount}
+                      onChange={(e) => setBookAmount(e.target.value)}
+                      required
+                      className="input-field"
+                      placeholder="USDT"
+                    />
+                    <textarea
+                      value={bookNote}
+                      onChange={(e) => setBookNote(e.target.value)}
+                      rows={2}
+                      className="input-field resize-y"
+                      placeholder="Nota (opcional)"
+                    />
+                    <button
+                      disabled={sending}
+                      className="btn-primary w-full !py-3"
+                    >
+                      {sending ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        dict.gallery.requestBook
+                      )}
+                    </button>
+                  </form>
+                )}
               </div>
             )}
-
-            <Link href="/models" className="inline-block text-sm text-champagne hover:underline">
-              ← {dict.gallery.browseModels}
-            </Link>
           </div>
         </div>
-      </main>
+      </div>
+
+      {viewStories && stories.length > 0 && (
+        <StoryViewer
+          stories={stories}
+          modelName={model.name}
+          onClose={() => setViewStories(false)}
+        />
+      )}
+
+      <Toast open={toast.open} message={toast.message} tone={toast.tone} />
     </div>
   );
 }

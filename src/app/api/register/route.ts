@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { generateReferralCode } from "@/lib/utils";
+import { generateCustodialTronWallet } from "@/lib/tron-wallet";
 
 const schema = z.object({
   name: z.string().min(2),
@@ -25,14 +26,11 @@ export async function POST(req: Request) {
     }
 
     let referredById: string | undefined;
-    if (body.referralCode) {
+    if (body.referralCode?.trim()) {
       const referrer = await prisma.user.findUnique({
-        where: { referralCode: body.referralCode.toUpperCase() },
+        where: { referralCode: body.referralCode.trim().toUpperCase() },
       });
-      if (!referrer) {
-        return NextResponse.json({ error: "Código de referido inválido" }, { status: 400 });
-      }
-      referredById = referrer.id;
+      if (referrer) referredById = referrer.id;
     }
 
     const passwordHash = await bcrypt.hash(body.password, 10);
@@ -40,6 +38,8 @@ export async function POST(req: Request) {
     while (await prisma.user.findUnique({ where: { referralCode } })) {
       referralCode = generateReferralCode(body.name);
     }
+
+    const wallet = await generateCustodialTronWallet();
 
     const user = await prisma.user.create({
       data: {
@@ -51,8 +51,17 @@ export async function POST(req: Request) {
         role: body.role,
         referralCode,
         referredById,
+        tronAddress: wallet.address,
+        tronPrivateKeyEnc: wallet.privateKeyEnc,
+        usdtPayoutAddress: wallet.address,
       },
-      select: { id: true, email: true, name: true, referralCode: true },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        referralCode: true,
+        tronAddress: true,
+      },
     });
 
     if (referredById) {
@@ -70,6 +79,7 @@ export async function POST(req: Request) {
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: "Datos inválidos" }, { status: 400 });
     }
+    console.error("register", error);
     return NextResponse.json({ error: "Error al registrar" }, { status: 500 });
   }
 }

@@ -1,6 +1,6 @@
 # SoloBBs
 
-Plataforma premium para acompañantes: escrow P2P cripto (USDT/BTC/LTC), smart contract simulado, billetera y red de referidos.
+Plataforma premium para acompañantes: escrow P2P cripto (USDT TRC20), billetera, red de referidos y KYC (Sumsub).
 
 ## Stack
 
@@ -8,25 +8,14 @@ Plataforma premium para acompañantes: escrow P2P cripto (USDT/BTC/LTC), smart c
 - Tailwind CSS 4
 - Prisma + **PostgreSQL**
 - Auth.js (NextAuth v5)
-- Framer Motion + Recharts
+- TronWeb (depósitos / retiros / splits)
 
 ## Arranque local
 
-1. Copia variables de entorno:
-
 ```bash
 cp .env.example .env
-```
-
-2. Levanta Postgres:
-
-```bash
-docker compose up -d
-```
-
-3. Instala, sincroniza schema y siembra:
-
-```bash
+docker compose up -d          # Postgres local
+# DATABASE_URL=postgresql://solobbs:solobbs@localhost:5432/solobbs
 npm install
 npx prisma db push
 npm run db:seed
@@ -41,33 +30,19 @@ Abre [http://localhost:3000](http://localhost:3000).
 |---------|-----------------------|------------|
 | Admin   | admin@solobbs.com     | solobbs123 |
 | Modelo  | sofia@solobbs.com     | solobbs123 |
-| Modelo  | lucia@solobbs.com     | solobbs123 |
 | Cliente | cliente@solobbs.com   | solobbs123 |
 
-## Deploy en Render.com
+## Producción (GitHub → Render → Hostinger → Cloudflare)
 
-1. Sube el repo a GitHub.
-2. En [Render](https://dashboard.render.com) → **New** → **Blueprint**.
-3. Conecta el repositorio (usa `render.yaml`).
-4. Cuando cree el servicio web, define:
-   - `AUTH_URL` = `https://TU-SERVICIO.onrender.com`
-   - `NEXTAUTH_URL` = `https://TU-SERVICIO.onrender.com`
-5. Deploy. En el primer arranque (`SEED_ON_BOOT=true`) se cargan las cuentas demo.
-6. Luego puedes poner `SEED_ON_BOOT=false` para no reintentar el seed en cada restart.
+Guía completa: **[DEPLOY.md](./DEPLOY.md)**
 
-### Variables
+Resumen:
 
-| Variable       | Origen                          |
-|----------------|---------------------------------|
-| `DATABASE_URL` | Postgres de Render (automático) |
-| `AUTH_SECRET`  | Generado por Render             |
-| `AUTH_URL`     | URL pública del servicio        |
-| `NEXTAUTH_URL` | Igual que `AUTH_URL`            |
+1. PostgreSQL en tu **VPS Hostinger**
+2. Push a **GitHub**
+3. **Render** Blueprint (`render.yaml`) con `DATABASE_URL` del VPS
+4. Dominio en **Cloudflare** (CNAME → Render) + Custom Domain en Render
 
-## Módulos
+## Variables importantes
 
-- Landing SoloBBs
-- Galería pública `/m/[code]` + mensajes
-- Billetera cripto (USDT/BTC/LTC) → pago P2P desde saldo
-- Escrow con confirmación de llegada antes de liberar
-- Fee plataforma 8% al liberar + comisiones de red
+Ver `.env.example`. En producción no subas `.env` al repo.

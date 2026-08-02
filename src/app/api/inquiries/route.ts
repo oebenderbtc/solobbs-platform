@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { notifyModelWhatsApp } from "@/lib/whatsapp";
 
 export async function GET(req: Request) {
   const session = await auth();
@@ -125,6 +126,20 @@ export async function POST(req: Request) {
       },
     });
 
+    // Cliente → modelo: aviso WhatsApp
+    if (session.user.id === inquiry.clientId) {
+      const model = await prisma.user.findUnique({
+        where: { id: inquiry.modelId },
+        select: { whatsapp: true, phone: true, whatsappNotify: true },
+      });
+      void notifyModelWhatsApp({
+        modelWhatsapp: model?.whatsapp || model?.phone,
+        enabled: model?.whatsappNotify,
+        clientName: session.user.name || "Cliente",
+        preview: body.body.trim(),
+      });
+    }
+
     return NextResponse.json({ message, inquiryId: inquiry.id });
   }
 
@@ -192,6 +207,13 @@ export async function POST(req: Request) {
       body: `${session.user.name} te escribió desde tu galería.`,
       link: "/dashboard/messages",
     },
+  });
+
+  void notifyModelWhatsApp({
+    modelWhatsapp: model.whatsapp || model.phone,
+    enabled: model.whatsappNotify,
+    clientName: session.user.name || "Cliente",
+    preview: body.body.trim(),
   });
 
   return NextResponse.json({ inquiryId: inquiry.id, message });

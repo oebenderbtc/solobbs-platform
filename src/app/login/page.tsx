@@ -1,25 +1,33 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { FormEvent, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { FormEvent, Suspense, useState } from "react";
 import { signIn } from "next-auth/react";
 import { motion, useReducedMotion } from "framer-motion";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { Logo } from "@/components/Logo";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { TronWalletButton } from "@/components/TronWalletButton";
 import { Toast } from "@/components/ui/Toast";
 import { easeOut } from "@/components/ui/motion";
 import { useLocale } from "@/i18n/LocaleProvider";
 
-export default function LoginPage() {
+function safeCallback(raw: string | null) {
+  if (!raw || !raw.startsWith("/") || raw.startsWith("//")) return "/dashboard";
+  return raw;
+}
+
+function LoginForm() {
   const router = useRouter();
+  const params = useSearchParams();
   const reduce = useReducedMotion();
   const { dict } = useLocale();
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPass, setShowPass] = useState(false);
   const [toast, setToast] = useState(false);
+  const callbackUrl = safeCallback(params.get("callbackUrl"));
 
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -37,7 +45,7 @@ export default function LoginPage() {
       return;
     }
     setToast(true);
-    router.push("/dashboard");
+    router.push(callbackUrl);
     router.refresh();
   }
 
@@ -68,9 +76,46 @@ export default function LoginPage() {
         transition={{ duration: 0.6, delay: 0.08, ease: easeOut }}
         className="glass relative rounded-[2rem] p-7 sm:p-8"
       >
-        <h1 className="font-display text-3xl tracking-tight">{dict.auth.loginTitle}</h1>
+        <h1 className="font-display text-3xl tracking-tight">
+          {dict.auth.loginTitle}
+        </h1>
         <p className="mt-2 text-sm text-mist">{dict.auth.loginSubtitle}</p>
-        <form onSubmit={onSubmit} className="mt-8 space-y-4">
+        <div className="mt-8 space-y-4">
+          <TronWalletButton
+            mode="login"
+            label={dict.auth.tronLogin}
+            loadingLabel={dict.auth.tronConnecting}
+            onError={(msg) => setError(msg)}
+            onSuccess={async (payload) => {
+              setError("");
+              setLoading(true);
+              const res = await signIn("credentials", {
+                ...payload,
+                mode: "login",
+                redirect: false,
+              });
+              setLoading(false);
+              if (res?.error) {
+                setError(
+                  (res as { code?: string }).code || dict.auth.loginError,
+                );
+                return;
+              }
+              setToast(true);
+              router.push(callbackUrl);
+              router.refresh();
+            }}
+          />
+          <p className="text-center text-[11px] text-mist/70">{dict.auth.tronHint}</p>
+          <div className="relative flex items-center gap-3">
+            <div className="h-px flex-1 bg-line" />
+            <span className="text-[11px] uppercase tracking-wider text-mist">
+              {dict.auth.orContinue}
+            </span>
+            <div className="h-px flex-1 bg-line" />
+          </div>
+        </div>
+        <form onSubmit={onSubmit} className="mt-4 space-y-4">
           <div>
             <label className="mb-2 block text-sm text-mist" htmlFor="email">
               {dict.auth.email}
@@ -101,11 +146,17 @@ export default function LoginPage() {
               />
               <button
                 type="button"
-                aria-label={showPass ? dict.auth.hidePassword : dict.auth.showPassword}
+                aria-label={
+                  showPass ? dict.auth.hidePassword : dict.auth.showPassword
+                }
                 onClick={() => setShowPass((v) => !v)}
                 className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-mist hover:text-cream"
               >
-                {showPass ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                {showPass ? (
+                  <EyeOff className="h-4 w-4" />
+                ) : (
+                  <Eye className="h-4 w-4" />
+                )}
               </button>
             </div>
           </div>
@@ -135,8 +186,16 @@ export default function LoginPage() {
         </form>
         <p className="mt-6 text-center text-sm text-mist">
           {dict.auth.newHere}{" "}
-          <Link href="/register" className="text-champagne transition hover:underline">
+          <Link
+            href={`/register?callbackUrl=${encodeURIComponent(callbackUrl)}`}
+            className="text-champagne transition hover:underline"
+          >
             {dict.auth.createAccount}
+          </Link>
+        </p>
+        <p className="mt-4 text-center text-xs text-mist">
+          <Link href="/terms" className="text-champagne/90 hover:underline">
+            {dict.legal.termsNav}
           </Link>
         </p>
         <div className="mt-6 whitespace-pre-line rounded-2xl bg-ink/50 p-4 text-xs leading-relaxed text-mist">
@@ -145,5 +204,13 @@ export default function LoginPage() {
       </motion.div>
       <Toast open={toast} message={dict.auth.welcomeBack} tone="success" />
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-ink" />}>
+      <LoginForm />
+    </Suspense>
   );
 }

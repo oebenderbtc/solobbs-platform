@@ -1,11 +1,15 @@
 import { prisma } from "./prisma";
-import { distributeReferralCommissions } from "./referrals";
+import {
+  applyReferralCommissionsLedger,
+  computeReferralSplits,
+} from "./referrals";
 import { formatUSDT } from "./crypto-format";
 import { smartEscrowRelease } from "./smart-escrow";
+import { getCompanyFeeWallet } from "./platform-wallets";
 
 export async function releaseEscrow(
   escrowId: string,
-  opts?: { skipArrivalCheck?: boolean },
+  opts?: { skipArrivalCheck?: boolean; releaseTxHash?: string },
 ) {
   const escrow = await prisma.escrow.findUnique({
     where: { id: escrowId },
@@ -15,6 +19,7 @@ export async function releaseEscrow(
         select: {
           id: true,
           usdtPayoutAddress: true,
+          tronAddress: true,
           name: true,
         },
       },
@@ -36,17 +41,28 @@ export async function releaseEscrow(
   });
   const feePercent = settings?.platformFeePercent ?? 8;
   const feeUsdt = Math.round(((escrow.amount * feePercent) / 100) * 100) / 100;
-  const net = Math.round((escrow.amount - feeUsdt) * 100) / 100;
+  const afterFee = Math.round((escrow.amount - feeUsdt) * 100) / 100;
+
+  const referralSplits = await computeReferralSplits(escrow.modelId, afterFee);
+  const referralTotal =
+    Math.round(referralSplits.reduce((a, s) => a + s.amount, 0) * 100) / 100;
+  const net =
+    Math.round(Math.max(0, afterFee - referralTotal) * 100) / 100;
+
+  const companyFeeWallet = await getCompanyFeeWallet();
 
   const onChain = await smartEscrowRelease({
     escrowId: escrow.id,
     amountUsdt: escrow.amount,
     feeUsdt,
     netUsdt: net,
-    modelPayoutAddress: escrow.model.usdtPayoutAddress,
-    treasuryAddress: settings?.cryptoWalletUsdt || "",
+    modelPayoutAddress:
+      escrow.model.tronAddress || escrow.model.usdtPayoutAddress,
+    treasuryAddress: companyFeeWallet,
     contractAddress: settings?.escrowContractAddress || "",
-    chain: escrow.chain || settings?.escrowChain || "POLYGON",
+    chain: escrow.chain || settings?.escrowChain || "TRON",
+    releaseTxHash: opts?.releaseTxHash,
+    referralSplits,
   });
 
   await prisma.$transaction([
@@ -57,9 +73,11 @@ export async function releaseEscrow(
         fee: feeUsdt,
         releasedAt: new Date(),
         releaseTxHash: onChain.releaseTxHash,
-        notes: `Auto-release SC · fee ${feeUsdt} USDT · ${onChain.message}`,
+        notes: `Auto-split · fee ${feeUsdt} · referidos ${referralTotal} · neto ${net} · ${onChain.message}`,
       },
     }),
+    // If on-chain payout succeeded, USDT already left treasury — still mirror on ledger
+    // so SoloBBs balances stay consistent for spending/withdraw UX.
     prisma.user.update({
       where: { id: escrow.modelId },
       data: {
@@ -80,13 +98,21 @@ export async function releaseEscrow(
     prisma.notification.create({
       data: {
         userId: escrow.modelId,
-        title: "Escrow liberado (auto)",
-        body: `Contrato liberó ${formatUSDT(net)}. Fee plataforma ${formatUSDT(feeUsdt)}. Tx: ${onChain.releaseTxHash.slice(0, 12)}…`,
+        title: "Escrow liberado (split automático)",
+        body: `Neto ${formatUSDT(net)} · fee plataforma ${formatUSDT(feeUsdt)} · comisiones red ${formatUSDT(referralTotal)}.`,
         link: "/dashboard/wallet",
       },
     }),
   ]);
 
-  await distributeReferralCommissions(escrow.modelId, net);
-  return { net, fee: feeUsdt, releaseTxHash: onChain.releaseTxHash, automated: true };
+  await applyReferralCommissionsLedger(escrow.modelId, referralSplits);
+
+  return {
+    net,
+    fee: feeUsdt,
+    referralTotal,
+    referralSplits,
+    releaseTxHash: onChain.releaseTxHash,
+    automated: true,
+  };
 }

@@ -126,12 +126,16 @@ export default function MessagesPage() {
     }
   }
 
-  async function p2pAction(escrowId: string, action: string) {
+  async function p2pAction(
+    escrowId: string,
+    action: string,
+    extra?: Record<string, string>,
+  ) {
     if (!activeId) return;
     const res = await fetch("/api/p2p", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ escrowId, action }),
+      body: JSON.stringify({ escrowId, action, ...extra }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
@@ -245,7 +249,9 @@ export default function MessagesPage() {
                             role={session?.user?.role || ""}
                             walletBalance={walletBalance}
                             onRefreshBalance={loadBalance}
-                            onAction={(action) => p2pAction(m.escrow!.id, action)}
+                            onAction={(action, extra) =>
+                              p2pAction(m.escrow!.id, action, extra)
+                            }
                           />
                         </div>
                       );

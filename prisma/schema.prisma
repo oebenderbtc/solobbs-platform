@@ -47,10 +47,15 @@ enum JobStatus {
 model User {
   id            String    @id @default(cuid())
   email         String    @unique
-  passwordHash  String
+  passwordHash  String?
+  tronAddress   String?   @unique
+  /// AES-GCM encrypted private key for custodial wallets (form signup)
+  tronPrivateKeyEnc String?
   name          String
   role          Role      @default(MODEL)
   phone         String?
+  whatsapp      String?
+  whatsappNotify Boolean  @default(true)
   bio           String?
   city          String?
   avatarUrl     String?
@@ -67,6 +72,12 @@ model User {
   rating        Float     @default(5)
   isActive      Boolean   @default(true)
   isVerified    Boolean   @default(false)
+  /// NONE | PENDING | APPROVED | REJECTED | RESUBMISSION
+  kycStatus     String    @default("NONE")
+  kycApplicantId String?
+  kycLevel      String?
+  kycReviewedAt DateTime?
+  kycRejectLabels String @default("")
   galleryPublic Boolean   @default(true)
   rateFrom      Float? // USDT from
   usdtPayoutAddress String?
@@ -87,6 +98,7 @@ model User {
   reviewsAuthored  Review[] @relation("ReviewsAuthored")
   reviewsReceived  Review[] @relation("ReviewsReceived")
   galleryImages    GalleryImage[]
+  stories          Story[]
   inquiriesAsModel Inquiry[] @relation("ModelInquiries")
   inquiriesAsClient Inquiry[] @relation("ClientInquiries")
   inquiryMessages  InquiryMessage[]
@@ -132,11 +144,23 @@ model Review {
 model GalleryImage {
   id        String   @id @default(cuid())
   url       String
+  mediaType String   @default("IMAGE") // IMAGE | VIDEO
   caption   String?
   sortOrder Int      @default(0)
   isCover   Boolean  @default(false)
   modelId   String
   model     User     @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+}
+
+model Story {
+  id        String   @id @default(cuid())
+  url       String
+  mediaType String   @default("IMAGE") // IMAGE | VIDEO
+  caption   String?
+  modelId   String
+  model     User     @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
   createdAt DateTime @default(now())
 }
 
@@ -192,7 +216,7 @@ model Escrow {
   amount                Float
   fee                   Float        @default(0)
   asset                 String       @default("USDT")
-  chain                 String       @default("POLYGON")
+  chain                 String       @default("TRON")
   status                EscrowStatus @default(PENDING)
   paymentMethod         PaymentMethod
   cryptoTxHash          String?
@@ -315,12 +339,26 @@ model PlatformSettings {
   cryptoWalletBtc       String @default("bc1qsolobbsdemo000000000000000000000")
   cryptoWalletUsdt      String @default("TSoloBBsDemoUSDT000000000000000000")
   cryptoWalletLtc       String @default("ltc1qsolobbsdemodemo000000000000000")
-  escrowContractAddress String @default("0xSoloBBsEscrowContractDemo000000000")
-  escrowChain           String @default("POLYGON")
+  /// TRON address that receives the platform fee (8%) on escrow release
+  companyFeeWallet      String @default("")
+  /// TRON address funded with TRX (and USDT) to pay gas + execute transfers
+  gasWalletAddress      String @default("")
+  /// AES-GCM encrypted private key for gasWalletAddress (never returned to client)
+  gasWalletKeyEnc       String @default("")
+  escrowContractAddress String @default("TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t")
+  escrowChain           String @default("TRON")
   btcPriceUsdt          Float  @default(95000)
   ltcPriceUsdt          Float  @default(85)
   platformNequi         String @default("3000000011")
   platformBankName      String @default("Bancolombia")
   platformBankAccount   String @default("000-111222-33")
   platformAccountName   String @default("SoloBBs SAS")
+}
+
+/// One-time challenge for TronLink login/register (shared across Next.js routes)
+model TronAuthNonce {
+  address   String   @id
+  nonce     String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
 }

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Loader2, MapPin, ShieldCheck, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatUSDT } from "@/lib/crypto-format";
+import { tronLinkLockUsdt, tronLinkSignRelease } from "@/lib/tron-client";
 import { useLocale } from "@/i18n/LocaleProvider";
 
 export type P2PEscrow = {
@@ -29,7 +30,10 @@ export function P2POrderCard({
   escrow: P2PEscrow;
   role: string;
   walletBalance: number | null;
-  onAction: (action: string) => Promise<{ error?: string; code?: string } | void>;
+  onAction: (
+    action: string,
+    extra?: Record<string, string>,
+  ) => Promise<{ error?: string; code?: string } | void>;
   onRefreshBalance?: () => void;
 }) {
   const { dict } = useLocale();
@@ -43,24 +47,17 @@ export function P2POrderCard({
   const arrived = Boolean(escrow.clientArrivedAt);
   const funded =
     escrow.status === "FUNDED" || escrow.status === "IN_PROGRESS";
-  const canPay =
-    isClient &&
-    escrow.status === "PENDING" &&
-    walletBalance !== null &&
-    walletBalance >= escrow.amount;
-  const needTopUp =
-    isClient &&
-    escrow.status === "PENDING" &&
-    walletBalance !== null &&
-    walletBalance < escrow.amount;
+  const canPay = isClient && escrow.status === "PENDING";
+  const canPayInternal =
+    canPay && walletBalance !== null && walletBalance >= escrow.amount;
   const canConfirmArrival = isClient && funded && !arrived;
   const canRelease = isModel && funded && arrived;
 
-  async function run(action: string) {
+  async function run(action: string, extra?: Record<string, string>) {
     setBusy(true);
     setError("");
     try {
-      const res = await onAction(action);
+      const res = await onAction(action, extra);
       if (res && "error" in res && res.error) {
         setError(res.error);
       }
@@ -70,9 +67,56 @@ export function P2POrderCard({
     }
   }
 
+  async function payWithTronLink() {
+    setBusy(true);
+    setError("");
+    try {
+      const infoRes = await fetch(`/api/p2p?escrowId=${escrow.id}`);
+      const info = await infoRes.json();
+      if (!infoRes.ok) {
+        setError(info.error || p.tronPayError);
+        return;
+      }
+      const treasury = info.payment?.treasuryAddress as string;
+      if (!treasury || treasury.startsWith("TSolo")) {
+        // Demo treasury — still open TronLink flow; server may be in demo mode
+      }
+      const { txId, fromAddress } = await tronLinkLockUsdt({
+        toAddress: treasury,
+        amountUsdt: escrow.amount,
+      });
+      await run("pay_with_tron", { txId, fromAddress });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : p.tronPayError);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function releaseWithTronLink() {
+    setBusy(true);
+    setError("");
+    try {
+      const signed = await tronLinkSignRelease({
+        escrowId: escrow.id,
+        amountUsdt: escrow.amount,
+        netUsdt: netHint,
+      });
+      await run("release", {
+        releaseSignature: signed.signature,
+        releaseMessage: signed.message,
+        releaseAddress: signed.address,
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : p.tronReleaseError);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const statusLabel =
     escrow.status === "PENDING"
-      ? p.statusAwaitingWallet
+      ? p.statusAwaitingTron
       : funded && !arrived
         ? p.statusAwaitingArrival
         : arrived && funded
@@ -97,20 +141,17 @@ export function P2POrderCard({
         {formatUSDT(escrow.amount)}
       </p>
       <p className="text-xs text-mist">{escrow.job?.title || p.defaultTitle}</p>
+      <p className="mt-1 text-[10px] uppercase tracking-wider text-champagne/80">
+        TRON · USDT-TRC20 · TronLink
+      </p>
 
       <div className="mt-3 space-y-1.5 rounded-xl bg-black/35 px-3 py-2.5 text-xs text-mist">
         <p className="flex items-center gap-1.5 text-cream">
           <Wallet className="h-3.5 w-3.5 text-champagne" />
-          {p.payWithBalance}
+          {p.payWithTron}
         </p>
-        {isClient && walletBalance !== null && (
-          <p>
-            {p.yourBalance}:{" "}
-            <span className="text-champagne">{formatUSDT(walletBalance)}</span>
-          </p>
-        )}
         {isModel && escrow.status === "PENDING" && (
-          <p>{p.waitClientWallet}</p>
+          <p>{p.waitClientTron}</p>
         )}
         {funded && !arrived && (
           <p className="flex items-start gap-1.5 text-amber-200/90">
@@ -134,17 +175,29 @@ export function P2POrderCard({
           <button
             type="button"
             disabled={busy}
-            onClick={() => run("pay_from_wallet")}
+            onClick={payWithTronLink}
             className="btn-primary !py-2 text-xs"
           >
-            {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : p.payNow}
+            {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : p.payTronNow}
           </button>
         )}
 
-        {needTopUp && (
+        {canPayInternal && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => run("pay_from_wallet")}
+            className="rounded-xl border border-line px-3 py-2 text-xs text-mist hover:text-cream"
+            title={p.payWithBalance}
+          >
+            {p.payInternal}
+          </button>
+        )}
+
+        {canPay && !canPayInternal && (
           <Link
             href="/dashboard/wallet"
-            className="rounded-xl border border-champagne/40 px-3 py-2 text-xs text-champagne hover:bg-champagne/10"
+            className="rounded-xl border border-line px-3 py-2 text-xs text-mist hover:text-cream"
           >
             {p.topUpWallet}
           </Link>
@@ -180,10 +233,14 @@ export function P2POrderCard({
           <button
             type="button"
             disabled={busy}
-            onClick={() => run("release")}
+            onClick={releaseWithTronLink}
             className="btn-primary !py-2 text-xs"
           >
-            {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : p.release}
+            {busy ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              p.releaseTron
+            )}
           </button>
         )}
 

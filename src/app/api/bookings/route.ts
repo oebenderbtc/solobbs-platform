@@ -1,7 +1,10 @@
+import { requireKycApproved } from "@/lib/kyc";
+import { isKycEnforced } from "@/lib/sumsub";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { notifyModelWhatsApp } from "@/lib/whatsapp";
 
 const schema = z.object({
   modelCode: z.string().min(2),
@@ -25,6 +28,9 @@ export async function POST(req: Request) {
     );
   }
 
+  const kycBlock = await requireKycApproved(session.user.id);
+  if (kycBlock) return kycBlock;
+
   try {
     const body = schema.parse(await req.json());
     const model = await prisma.user.findFirst({
@@ -38,6 +44,20 @@ export async function POST(req: Request) {
 
     if (!model) {
       return NextResponse.json({ error: "Modelo no disponible" }, { status: 404 });
+    }
+
+    if (
+      isKycEnforced() &&
+      model.kycStatus !== "APPROVED" &&
+      !model.isVerified
+    ) {
+      return NextResponse.json(
+        {
+          error: "Esta modelo aún no ha completado la verificación de identidad",
+          code: "MODEL_KYC_REQUIRED",
+        },
+        { status: 403 },
+      );
     }
 
     const settings = await prisma.platformSettings.findUnique({
@@ -117,6 +137,13 @@ export async function POST(req: Request) {
         body: `${session.user.name} envió detalles de la reserva propuesta.`,
         link: "/dashboard/messages",
       },
+    });
+
+    void notifyModelWhatsApp({
+      modelWhatsapp: model.whatsapp || model.phone,
+      enabled: model.whatsappNotify,
+      clientName: session.user.name || "Cliente",
+      preview: `Quiere reservar “${body.title}”`,
     });
 
     return NextResponse.json({ escrow, inquiryId: inquiry.id });

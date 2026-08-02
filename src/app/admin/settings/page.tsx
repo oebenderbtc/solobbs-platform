@@ -13,6 +13,9 @@ type Settings = {
   minEscrowAmount: number;
   cryptoWalletBtc: string;
   cryptoWalletUsdt: string;
+  companyFeeWallet: string;
+  gasWalletAddress: string;
+  gasWalletKeyConfigured: boolean;
   platformNequi: string;
   platformBankName: string;
   platformBankAccount: string;
@@ -22,7 +25,9 @@ type Settings = {
 export default function AdminSettingsPage() {
   const { dict } = useLocale();
   const [settings, setSettings] = useState<Settings | null>(null);
+  const [gasWalletPrivateKey, setGasWalletPrivateKey] = useState("");
   const [saved, setSaved] = useState(false);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     fetch("/api/admin/settings")
@@ -33,15 +38,24 @@ export default function AdminSettingsPage() {
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!settings) return;
+    setError("");
     const res = await fetch("/api/admin/settings", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(settings),
+      body: JSON.stringify({
+        ...settings,
+        gasWalletPrivateKey: gasWalletPrivateKey.trim() || undefined,
+      }),
     });
-    if (res.ok) {
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setError(data.error || dict.common.error);
+      return;
     }
+    setSettings(data.settings);
+    setGasWalletPrivateKey("");
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
   }
 
   if (!settings) {
@@ -78,58 +92,53 @@ export default function AdminSettingsPage() {
             />
           </div>
         ))}
-        <div>
-          <label className="mb-2 block text-sm text-mist">{dict.admin.walletUsdt}</label>
-          <input
-            className="input-field"
-            value={settings.cryptoWalletUsdt}
-            onChange={(e) => setSettings({ ...settings, cryptoWalletUsdt: e.target.value })}
-          />
+
+        <div className="border-t border-white/10 pt-4">
+          <p className="mb-3 text-sm font-medium text-cream">{dict.admin.companyWalletsTitle}</p>
+          <p className="mb-4 text-xs text-mist">{dict.admin.companyWalletsHint}</p>
+          <div className="space-y-4">
+            <div>
+              <label className="mb-2 block text-sm text-mist">{dict.admin.companyFeeWallet}</label>
+              <input
+                className="input-field font-mono text-sm"
+                placeholder="T…"
+                value={settings.companyFeeWallet}
+                onChange={(e) =>
+                  setSettings({ ...settings, companyFeeWallet: e.target.value })
+                }
+              />
+            </div>
+            <div>
+              <label className="mb-2 block text-sm text-mist">{dict.admin.gasWalletAddress}</label>
+              <input
+                className="input-field font-mono text-sm"
+                placeholder="T…"
+                value={settings.gasWalletAddress}
+                onChange={(e) =>
+                  setSettings({ ...settings, gasWalletAddress: e.target.value })
+                }
+              />
+            </div>
+            <div>
+              <label className="mb-2 block text-sm text-mist">{dict.admin.gasWalletKey}</label>
+              <input
+                type="password"
+                autoComplete="off"
+                className="input-field font-mono text-sm"
+                placeholder={
+                  settings.gasWalletKeyConfigured
+                    ? dict.admin.gasWalletKeyConfigured
+                    : dict.admin.gasWalletKeyPlaceholder
+                }
+                value={gasWalletPrivateKey}
+                onChange={(e) => setGasWalletPrivateKey(e.target.value)}
+              />
+              <p className="mt-1.5 text-xs text-mist">{dict.admin.gasWalletKeyHint}</p>
+            </div>
+          </div>
         </div>
-        <div>
-          <label className="mb-2 block text-sm text-mist">{dict.admin.walletBtc}</label>
-          <input
-            className="input-field"
-            value={settings.cryptoWalletBtc}
-            onChange={(e) => setSettings({ ...settings, cryptoWalletBtc: e.target.value })}
-          />
-        </div>
-        <div>
-          <label className="mb-2 block text-sm text-mist">Nequi plataforma</label>
-          <input
-            className="input-field"
-            value={settings.platformNequi}
-            onChange={(e) => setSettings({ ...settings, platformNequi: e.target.value })}
-          />
-        </div>
-        <div>
-          <label className="mb-2 block text-sm text-mist">Titular cuenta</label>
-          <input
-            className="input-field"
-            value={settings.platformAccountName}
-            onChange={(e) =>
-              setSettings({ ...settings, platformAccountName: e.target.value })
-            }
-          />
-        </div>
-        <div>
-          <label className="mb-2 block text-sm text-mist">Banco</label>
-          <input
-            className="input-field"
-            value={settings.platformBankName}
-            onChange={(e) => setSettings({ ...settings, platformBankName: e.target.value })}
-          />
-        </div>
-        <div>
-          <label className="mb-2 block text-sm text-mist">Cuenta bancaria</label>
-          <input
-            className="input-field"
-            value={settings.platformBankAccount}
-            onChange={(e) =>
-              setSettings({ ...settings, platformBankAccount: e.target.value })
-            }
-          />
-        </div>
+
+        {error ? <p className="text-sm text-rose-300">{error}</p> : null}
         <div className="flex items-center gap-4 pt-2">
           <button className="btn-primary">{dict.admin.saveSettings}</button>
         </div>

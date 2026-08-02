@@ -7,9 +7,13 @@ import {
   formatCrypto,
   formatUSDT,
   getTreasury,
+  isDemoTreasuryAddress,
   mockTxHash,
+  resolveUsdtTreasury,
   toUsdt,
 } from "@/lib/crypto";
+import { tronEscrowDemoMode, verifyTronUsdtLock } from "@/lib/tron-escrow";
+import { requireKycApproved } from "@/lib/kyc";
 
 function depositRef(userId: string, asset: string) {
   return `SB-${asset}-${userId.slice(-4).toUpperCase()}-${Date.now().toString(36).toUpperCase()}`;
@@ -21,7 +25,36 @@ export async function GET() {
     return NextResponse.json({ error: "No autorizado" }, { status: 401 });
   }
 
-  const user = await prisma.user.findUniqueOrThrow({
+  // Backfill custodial TRON wallet for email-only accounts created before this feature
+  try {
+    const { ensureUserTronWallet } = await import("@/lib/ensure-tron-wallet");
+    await ensureUserTronWallet(session.user.id);
+  } catch {
+    // non-fatal
+  }
+
+  const depositsBefore = await prisma.walletDeposit.findMany({
+    where: { userId: session.user.id },
+    orderBy: { createdAt: "desc" },
+    take: 30,
+  });
+
+  const hasPendingUsdt = depositsBefore.some(
+    (d) => d.status === "PENDING" && (d.asset || "USDT") === "USDT",
+  );
+
+  let settledIds: string[] = [];
+  if (hasPendingUsdt) {
+    try {
+      const { settlePendingUsdtDeposits } = await import("@/lib/wallet-settle");
+      const result = await settlePendingUsdtDeposits(session.user.id);
+      settledIds = result.settled;
+    } catch {
+      settledIds = [];
+    }
+  }
+
+  const userRow = await prisma.user.findUniqueOrThrow({
     where: { id: session.user.id },
     select: {
       id: true,
@@ -31,21 +64,32 @@ export async function GET() {
       ltcBalance: true,
       escrowHeld: true,
       totalEarned: true,
+      tronAddress: true,
+      tronPrivateKeyEnc: true,
       usdtPayoutAddress: true,
       btcPayoutAddress: true,
       ltcPayoutAddress: true,
     },
   });
 
+  const { tronPrivateKeyEnc, ...userRest } = userRow;
+  const user = {
+    ...userRest,
+    custodialWallet: Boolean(tronPrivateKeyEnc),
+  };
+
   const settings = await prisma.platformSettings.findUnique({
     where: { id: "default" },
   });
 
-  const deposits = await prisma.walletDeposit.findMany({
-    where: { userId: session.user.id },
-    orderBy: { createdAt: "desc" },
-    take: 30,
-  });
+  const deposits =
+    settledIds.length > 0 || hasPendingUsdt
+      ? await prisma.walletDeposit.findMany({
+          where: { userId: session.user.id },
+          orderBy: { createdAt: "desc" },
+          take: 30,
+        })
+      : depositsBefore;
 
   const payments = await prisma.payment.findMany({
     where: { userId: session.user.id },
@@ -53,16 +97,22 @@ export async function GET() {
     take: 20,
   });
 
+  const usdtTreasury = resolveUsdtTreasury(settings?.cryptoWalletUsdt);
+  const demoMode = tronEscrowDemoMode();
+
   return NextResponse.json({
     user,
     deposits,
     payments,
+    demoMode,
+    settled: settledIds,
     platform: {
-      usdt: settings?.cryptoWalletUsdt,
+      usdt: usdtTreasury,
+      usdtDemo: isDemoTreasuryAddress(usdtTreasury),
       btc: settings?.cryptoWalletBtc,
       ltc: settings?.cryptoWalletLtc,
       escrowContract: settings?.escrowContractAddress,
-      escrowChain: settings?.escrowChain,
+      escrowChain: settings?.escrowChain || "TRON",
       btcPriceUsdt: settings?.btcPriceUsdt ?? 95000,
       ltcPriceUsdt: settings?.ltcPriceUsdt ?? 85,
       feePercent: settings?.platformFeePercent ?? 8,
@@ -93,7 +143,7 @@ export async function POST(req: Request) {
       .parse(await req.json());
 
     const asset = body.asset as CryptoAsset;
-    const minNative = asset === "USDT" ? 20 : asset === "BTC" ? 0.0002 : 0.1;
+    const minNative = asset === "USDT" ? 1 : asset === "BTC" ? 0.0002 : 0.1;
     if (body.amount < minNative) {
       return NextResponse.json(
         { error: `Mínimo ${formatCrypto(minNative, asset)}` },
@@ -102,6 +152,43 @@ export async function POST(req: Request) {
     }
 
     const treasury = await getTreasury(asset);
+    let depositAddress = treasury.address;
+    let demoAddr = treasury.demo;
+
+    // USDT reloads go to the user's permanent TRON wallet (never changes)
+    if (asset === "USDT") {
+      const me = await prisma.user.findUniqueOrThrow({
+        where: { id: session.user.id },
+        select: { tronAddress: true },
+      });
+      if (!me.tronAddress) {
+        return NextResponse.json(
+          { error: "Tu cuenta aún no tiene wallet TRON. Recarga la página." },
+          { status: 400 },
+        );
+      }
+      depositAddress = me.tronAddress;
+      demoAddr = false;
+    } else if (treasury.demo && !tronEscrowDemoMode()) {
+      return NextResponse.json(
+        {
+          error:
+            "Configura las direcciones BTC/LTC de plataforma en admin para depósitos on-chain.",
+        },
+        { status: 400 },
+      );
+    }
+
+    if (asset === "USDT" && demoAddr && !tronEscrowDemoMode()) {
+      return NextResponse.json(
+        {
+          error:
+            "Configura TRON_TREASURY_USDT en .env con una wallet TRON real para depósitos on-chain.",
+        },
+        { status: 400 },
+      );
+    }
+
     const reference = depositRef(session.user.id, asset);
     const creditedUsdt = await toUsdt(body.amount, asset);
 
@@ -109,14 +196,14 @@ export async function POST(req: Request) {
       data: {
         amount: body.amount,
         asset,
-        chain: treasury.chain,
+        chain: asset === "USDT" ? "TRON" : treasury.chain,
         rail: asset,
         status: "PENDING",
         reference,
-        depositAddress: treasury.address,
+        depositAddress,
         creditedUsdt,
         userId: session.user.id,
-        notes: `Envía ${formatCrypto(body.amount, asset)} a la treasury. Memo/ref: ${reference}. Se acredita ~${formatUSDT(creditedUsdt)} al confirmar.`,
+        notes: `Envía ${formatCrypto(body.amount, asset)} a tu wallet. Memo/ref: ${reference}. Se acredita ~${formatUSDT(creditedUsdt)} al confirmar.`,
       },
     });
 
@@ -125,10 +212,11 @@ export async function POST(req: Request) {
       instructions: {
         asset,
         amount: body.amount,
-        address: treasury.address,
-        chain: treasury.chain,
+        address: depositAddress,
+        chain: asset === "USDT" ? "TRON" : treasury.chain,
         reference,
         creditedUsdt,
+        demo: demoAddr,
       },
     });
   } catch {
@@ -145,34 +233,104 @@ export async function PATCH(req: Request) {
   const body = z
     .object({
       depositId: z.string().optional(),
-      action: z.enum(["confirm_demo", "confirm", "save_payout"]),
-      usdtPayoutAddress: z.string().optional(),
-      btcPayoutAddress: z.string().optional(),
-      ltcPayoutAddress: z.string().optional(),
+      action: z.enum(["confirm_demo", "confirm", "withdraw"]),
+      txId: z.string().optional(),
+      fromAddress: z.string().optional(),
+      amount: z.number().positive().optional(),
+      toAddress: z.string().optional(),
     })
     .parse(await req.json());
 
-  if (body.action === "save_payout") {
-    const user = await prisma.user.update({
+  if (body.action === "withdraw") {
+    const kycBlock = await requireKycApproved(session.user.id);
+    if (kycBlock) return kycBlock;
+
+    const amount = body.amount;
+    if (!amount || amount < 1) {
+      return NextResponse.json({ error: "Monto mínimo 1 USDT" }, { status: 400 });
+    }
+
+    const toAddress = (body.toAddress || "").trim();
+    if (!/^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(toAddress)) {
+      return NextResponse.json(
+        { error: "Dirección TRON de destino inválida" },
+        { status: 400 },
+      );
+    }
+
+    const me = await prisma.user.findUniqueOrThrow({
       where: { id: session.user.id },
-      data: {
-        ...(body.usdtPayoutAddress !== undefined
-          ? { usdtPayoutAddress: body.usdtPayoutAddress || null }
-          : {}),
-        ...(body.btcPayoutAddress !== undefined
-          ? { btcPayoutAddress: body.btcPayoutAddress || null }
-          : {}),
-        ...(body.ltcPayoutAddress !== undefined
-          ? { ltcPayoutAddress: body.ltcPayoutAddress || null }
-          : {}),
-      },
       select: {
-        usdtPayoutAddress: true,
-        btcPayoutAddress: true,
-        ltcPayoutAddress: true,
+        walletBalance: true,
+        tronAddress: true,
       },
     });
-    return NextResponse.json({ user });
+
+    if (me.walletBalance < amount) {
+      return NextResponse.json({ error: "Saldo insuficiente" }, { status: 400 });
+    }
+
+    const { sendUsdtToAddress } = await import("@/lib/tron-send");
+    const sent = await sendUsdtToAddress({
+      toAddress,
+      amountUsdt: amount,
+    });
+    if (!sent.ok) {
+      return NextResponse.json({ error: sent.error }, { status: 400 });
+    }
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const fresh = await tx.user.findUniqueOrThrow({
+        where: { id: session.user.id },
+        select: { walletBalance: true },
+      });
+      if (fresh.walletBalance < amount) {
+        throw new Error("Saldo insuficiente");
+      }
+
+      const user = await tx.user.update({
+        where: { id: session.user.id },
+        data: { walletBalance: { decrement: amount } },
+        select: { walletBalance: true, tronAddress: true },
+      });
+
+      await tx.payment.create({
+        data: {
+          amount,
+          method: "CRYPTO",
+          status: "COMPLETED",
+          externalId: `WD-${session.user.id.slice(-4)}-${Date.now().toString(36)}`,
+          cryptoNetwork: "TRON",
+          cryptoAddress: toAddress,
+          userId: session.user.id,
+        },
+      });
+
+      await tx.notification.create({
+        data: {
+          userId: session.user.id,
+          title: "Retiro USDT enviado",
+          body: sent.demo
+            ? `${formatUSDT(amount)} debitados (demo) → ${toAddress}`
+            : `${formatUSDT(amount)} enviados a ${toAddress}. Tx: ${sent.txId.slice(0, 10)}…`,
+          link: "/dashboard/wallet",
+        },
+      });
+
+      return user;
+    }).catch(() => null);
+
+    if (!updated) {
+      return NextResponse.json({ error: "Saldo insuficiente" }, { status: 400 });
+    }
+
+    return NextResponse.json({
+      ok: true,
+      txId: sent.txId,
+      demo: Boolean(sent.demo),
+      balances: updated,
+      toAddress,
+    });
   }
 
   if (!body.depositId) {
@@ -186,11 +344,7 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: "Depósito no encontrado" }, { status: 404 });
   }
 
-  const canConfirm =
-    session.user.role === "ADMIN" ||
-    (deposit.userId === session.user.id && body.action === "confirm_demo");
-
-  if (!canConfirm) {
+  if (deposit.userId !== session.user.id && session.user.role !== "ADMIN") {
     return NextResponse.json({ error: "Sin permiso" }, { status: 403 });
   }
 
@@ -200,7 +354,63 @@ export async function PATCH(req: Request) {
 
   const asset = (deposit.asset || "USDT") as CryptoAsset;
   const creditedUsdt = deposit.creditedUsdt ?? (await toUsdt(deposit.amount, asset));
-  const txHash = mockTxHash(asset === "BTC" || asset === "LTC" ? "" : "0x");
+  let txHash = deposit.txHash || "";
+  let notes = "Depósito confirmado";
+
+  if (body.action === "confirm_demo") {
+    if (!tronEscrowDemoMode()) {
+      return NextResponse.json(
+        { error: "Simulación desactivada. Paga con TronLink o envía el txId real." },
+        { status: 400 },
+      );
+    }
+    txHash = mockTxHash(asset === "BTC" || asset === "LTC" ? "" : "0x");
+    notes = "Depósito confirmado en modo demo (sin on-chain)";
+  } else if (body.action === "confirm") {
+    if (asset !== "USDT") {
+      return NextResponse.json(
+        { error: "Confirmación on-chain automática solo para USDT-TRC20" },
+        { status: 400 },
+      );
+    }
+    const txId = (body.txId || "").trim();
+    if (!/^[a-fA-F0-9]{64}$/.test(txId)) {
+      return NextResponse.json({ error: "txId TRON inválido" }, { status: 400 });
+    }
+
+    const treasury = deposit.depositAddress || (await getTreasury("USDT")).address;
+    if (isDemoTreasuryAddress(treasury) && !tronEscrowDemoMode()) {
+      return NextResponse.json(
+        { error: "Treasury demo: configura TRON_TREASURY_USDT en .env" },
+        { status: 400 },
+      );
+    }
+
+    const reused = await prisma.walletDeposit.findFirst({
+      where: { txHash: txId, status: "COMPLETED" },
+    });
+    if (reused) {
+      return NextResponse.json(
+        { error: "Esa transacción ya fue acreditada" },
+        { status: 400 },
+      );
+    }
+
+    const verified = await verifyTronUsdtLock({
+      txId,
+      treasuryAddress: treasury,
+      amountUsdt: deposit.amount,
+      fromAddress: body.fromAddress || null,
+    });
+    if (!verified.ok) {
+      return NextResponse.json({ error: verified.error }, { status: 400 });
+    }
+
+    txHash = txId;
+    notes = "Depósito USDT-TRC20 verificado on-chain (TronGrid)";
+  } else {
+    return NextResponse.json({ error: "Acción inválida" }, { status: 400 });
+  }
 
   const updated = await prisma.$transaction(async (tx) => {
     const d = await tx.walletDeposit.update({
@@ -211,11 +421,10 @@ export async function PATCH(req: Request) {
         txHash,
         confirmations: asset === "BTC" ? 3 : asset === "LTC" ? 6 : 20,
         creditedUsdt,
-        notes: "Depósito on-chain confirmado automáticamente (watcher demo)",
+        notes,
       },
     });
 
-    // Settlement unificado en USDT (BTC/LTC se convierten al confirmar)
     await tx.user.update({
       where: { id: deposit.userId },
       data: {
@@ -224,8 +433,6 @@ export async function PATCH(req: Request) {
         ...(asset === "LTC" ? { ltcBalance: { increment: deposit.amount } } : {}),
       },
     });
-
-    // Nota: btc/ltcBalance = histórico depositado; el saldo gastable de escrow es walletBalance (USDT)
 
     await tx.payment.create({
       data: {
@@ -256,5 +463,5 @@ export async function PATCH(req: Request) {
     select: { walletBalance: true, btcBalance: true, ltcBalance: true },
   });
 
-  return NextResponse.json({ deposit: updated, balances: user, automated: true });
+  return NextResponse.json({ deposit: updated, balances: user });
 }

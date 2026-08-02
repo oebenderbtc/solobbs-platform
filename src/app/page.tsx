@@ -279,7 +279,14 @@ export default function HomePage() {
       </section>
 
       <footer className="border-t border-line px-6 py-8 text-center text-sm text-mist">
-        © {new Date().getFullYear()} SoloBBs · {dict.landing.footer}
+        <p>
+          © {new Date().getFullYear()} SoloBBs · {dict.landing.footer}
+        </p>
+        <p className="mt-2 flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
+          <Link href="/terms" className="text-champagne hover:underline">
+            {dict.landing.terms}
+          </Link>
+        </p>
       </footer>
     </div>
   );

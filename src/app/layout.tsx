@@ -1,8 +1,13 @@
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
 import { Outfit } from "next/font/google";
 import { Providers } from "@/components/Providers";
 import { SupportChat } from "@/components/SupportChat";
 import { getDictionary, getLocale } from "@/i18n/server";
+import {
+  CURRENCY_COOKIE,
+  type DisplayCurrency,
+} from "@/lib/display-currency";
 import "./globals.css";
 
 const outfit = Outfit({
@@ -30,6 +35,9 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const locale = await getLocale();
+  const jar = await cookies();
+  const raw = jar.get(CURRENCY_COOKIE)?.value;
+  const currency: DisplayCurrency = raw === "COP" ? "COP" : "USD";
 
   return (
     <html
@@ -38,7 +46,7 @@ export default async function RootLayout({
       className={`${outfit.variable} h-full`}
     >
       <body className={`${outfit.className} min-h-full antialiased`}>
-        <Providers locale={locale}>
+        <Providers locale={locale} currency={currency}>
           {children}
           <SupportChat />
         </Providers>

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { releaseEscrow } from "@/lib/escrow";
+import { requireKycApproved } from "@/lib/kyc";
 
 const createSchema = z.object({
   title: z.string().min(3),
@@ -136,6 +137,11 @@ export async function PATCH(req: Request) {
   }
 
   if (body.action === "fund") {
+    // Client must be age/KYC verified before funding a service
+    if (session.user.role === "CLIENT") {
+      const kycBlock = await requireKycApproved(session.user.id);
+      if (kycBlock) return kycBlock;
+    }
     const updated = await prisma.$transaction(async (tx) => {
       let clientId = escrow.clientId;
       if (!clientId) {
