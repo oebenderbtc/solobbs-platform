@@ -187,6 +187,8 @@ model InquiryMessage {
   mediaUrl   String?
   mediaName  String?
   mediaMime  String?
+  /// Binary attachment stored in Postgres (survives Render redeploys)
+  mediaData  Bytes?
   viewOnce   Boolean   @default(false)
   viewedAt   DateTime?
   readAt     DateTime?

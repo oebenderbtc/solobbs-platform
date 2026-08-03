@@ -1,10 +1,32 @@
 import { NextResponse } from "next/server";
 import { readFile } from "fs/promises";
+import path from "path";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { chatFileDiskPath, mimeFromExt } from "@/lib/chat-media";
 
 type Ctx = { params: Promise<{ path: string[] }> };
+
+function mimeFromName(name: string | null | undefined, fallback?: string | null) {
+  if (fallback) return fallback;
+  const ext = (name || "").split(".").pop()?.toLowerCase() || "";
+  const map: Record<string, string> = {
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    png: "image/png",
+    webp: "image/webp",
+    gif: "image/gif",
+    heic: "image/heic",
+    mp4: "video/mp4",
+    webm: "video/webm",
+    mov: "video/quicktime",
+    mp3: "audio/mpeg",
+    m4a: "audio/mp4",
+    ogg: "audio/ogg",
+    wav: "audio/wav",
+    pdf: "application/pdf",
+  };
+  return map[ext] || "application/octet-stream";
+}
 
 export async function GET(_req: Request, ctx: Ctx) {
   const session = await auth();
@@ -13,50 +35,78 @@ export async function GET(_req: Request, ctx: Ctx) {
   }
 
   const parts = (await ctx.params).path || [];
-  // Expected: chat / userId / inquiryId / filename
-  if (parts.length !== 4 || parts[0] !== "chat") {
-    return NextResponse.json({ error: "Ruta inválida" }, { status: 400 });
-  }
 
-  const [, userId, inquiryId, filename] = parts;
-  if (
-    !userId ||
-    !inquiryId ||
-    !filename ||
-    filename.includes("..") ||
-    filename.includes("/") ||
-    filename.includes("\\")
-  ) {
-    return NextResponse.json({ error: "Ruta inválida" }, { status: 400 });
-  }
-
-  const inquiry = await prisma.inquiry.findUnique({
-    where: { id: inquiryId },
-    select: { modelId: true, clientId: true },
-  });
-  if (!inquiry) {
-    return NextResponse.json({ error: "No encontrado" }, { status: 404 });
-  }
-
-  const allowed =
-    session.user.role === "ADMIN" ||
-    inquiry.modelId === session.user.id ||
-    inquiry.clientId === session.user.id;
-  if (!allowed) {
-    return NextResponse.json({ error: "Sin permiso" }, { status: 403 });
-  }
-
-  try {
-    const buffer = await readFile(chatFileDiskPath(userId, inquiryId, filename));
-    return new NextResponse(buffer, {
-      status: 200,
-      headers: {
-        "Content-Type": mimeFromExt(filename),
-        "Cache-Control": "private, max-age=3600",
-        "Content-Length": String(buffer.length),
+  // DB-backed: /api/media/msg/:messageId
+  if (parts.length === 2 && parts[0] === "msg") {
+    const messageId = parts[1];
+    const message = await prisma.inquiryMessage.findUnique({
+      where: { id: messageId },
+      select: {
+        id: true,
+        mediaData: true,
+        mediaMime: true,
+        mediaName: true,
+        mediaUrl: true,
+        viewOnce: true,
+        viewedAt: true,
+        senderId: true,
+        inquiry: { select: { modelId: true, clientId: true } },
       },
     });
-  } catch {
+    if (!message) {
+      return NextResponse.json({ error: "No encontrado" }, { status: 404 });
+    }
+
+    const allowed =
+      session.user.role === "ADMIN" ||
+      message.inquiry.modelId === session.user.id ||
+      message.inquiry.clientId === session.user.id;
+    if (!allowed) {
+      return NextResponse.json({ error: "Sin permiso" }, { status: 403 });
+    }
+
+    // View-once already consumed: only reveal was via PATCH; no longer serve
+    if (message.viewOnce && message.viewedAt && message.senderId !== session.user.id) {
+      return NextResponse.json({ error: "Ya no disponible" }, { status: 410 });
+    }
+
+    if (message.mediaData && message.mediaData.length > 0) {
+      const bytes = Buffer.from(message.mediaData);
+      return new NextResponse(bytes, {
+        status: 200,
+        headers: {
+          "Content-Type": mimeFromName(message.mediaName, message.mediaMime),
+          "Cache-Control": "private, max-age=60",
+          "Content-Length": String(bytes.length),
+        },
+      });
+    }
+
+    // Legacy disk fallback
+    if (message.mediaUrl?.startsWith("/uploads/") || message.mediaUrl?.startsWith("/api/media/chat/")) {
+      try {
+        const rel = message.mediaUrl.replace(/^\/api\/media\/chat\//, "chat/");
+        const disk = message.mediaUrl.startsWith("/uploads/")
+          ? path.join(process.cwd(), "public", message.mediaUrl.replace(/^\//, ""))
+          : path.join(
+              process.env.UPLOAD_ROOT || path.join(process.cwd(), "data", "uploads"),
+              ...rel.split("/"),
+            );
+        const buffer = await readFile(disk);
+        return new NextResponse(buffer, {
+          status: 200,
+          headers: {
+            "Content-Type": mimeFromName(message.mediaName, message.mediaMime),
+            "Cache-Control": "private, max-age=60",
+          },
+        });
+      } catch {
+        /* fallthrough */
+      }
+    }
+
     return NextResponse.json({ error: "Archivo no encontrado" }, { status: 404 });
   }
+
+  return NextResponse.json({ error: "Ruta inválida" }, { status: 400 });
 }

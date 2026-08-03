@@ -5,9 +5,32 @@ import { prisma } from "@/lib/prisma";
 import { notifyModelWhatsApp } from "@/lib/whatsapp";
 import {
   classifyChatFile,
-  deleteChatUpload,
-  saveChatUpload,
+  fileToBuffer,
+  mediaUrlForMessage,
 } from "@/lib/chat-media";
+
+/** Never select mediaData in list/thread JSON (can be many MB). */
+const messageMetaSelect = {
+  id: true,
+  body: true,
+  type: true,
+  mediaUrl: true,
+  mediaName: true,
+  mediaMime: true,
+  viewOnce: true,
+  viewedAt: true,
+  readAt: true,
+  senderId: true,
+  escrowId: true,
+  createdAt: true,
+  sender: { select: { id: true, name: true, role: true } },
+  escrow: {
+    include: {
+      sellerPaymentMethod: true,
+      job: { select: { id: true, title: true } },
+    },
+  },
+} as const;
 
 function redactMessage(
   message: {
@@ -40,7 +63,6 @@ function redactMessage(
   }
 
   if (message.viewOnce && !isSender && !viewOnceSpent) {
-    // Recipient sees locked preview until they open it
     return {
       ...message,
       mediaUrl: null,
@@ -73,18 +95,6 @@ export async function GET(req: Request) {
           select: { id: true, name: true, referralCode: true, avatarUrl: true },
         },
         client: { select: { id: true, name: true, avatarUrl: true } },
-        messages: {
-          include: {
-            sender: { select: { id: true, name: true, role: true } },
-            escrow: {
-              include: {
-                sellerPaymentMethod: true,
-                job: { select: { id: true, title: true } },
-              },
-            },
-          },
-          orderBy: { createdAt: "asc" },
-        },
       },
     });
 
@@ -114,15 +124,7 @@ export async function GET(req: Request) {
 
     const refreshed = await prisma.inquiryMessage.findMany({
       where: { inquiryId: inquiry.id },
-      include: {
-        sender: { select: { id: true, name: true, role: true } },
-        escrow: {
-          include: {
-            sellerPaymentMethod: true,
-            job: { select: { id: true, title: true } },
-          },
-        },
-      },
+      select: messageMetaSelect,
       orderBy: { createdAt: "asc" },
     });
 
@@ -149,6 +151,12 @@ export async function GET(req: Request) {
       },
       client: { select: { id: true, name: true, avatarUrl: true } },
       messages: {
+        select: {
+          id: true,
+          body: true,
+          type: true,
+          createdAt: true,
+        },
         orderBy: { createdAt: "desc" },
         take: 1,
       },
@@ -165,9 +173,9 @@ async function createChatMessage(opts: {
   senderName: string;
   body: string;
   type?: string;
-  mediaUrl?: string | null;
   mediaName?: string | null;
   mediaMime?: string | null;
+  mediaData?: Buffer | null;
   viewOnce?: boolean;
 }) {
   const inquiry = await prisma.inquiry.findUnique({
@@ -184,12 +192,23 @@ async function createChatMessage(opts: {
       senderId: opts.senderId,
       body: opts.body,
       type: opts.type || "TEXT",
-      mediaUrl: opts.mediaUrl || null,
       mediaName: opts.mediaName || null,
       mediaMime: opts.mediaMime || null,
+      mediaData: opts.mediaData
+        ? new Uint8Array(opts.mediaData)
+        : null,
       viewOnce: Boolean(opts.viewOnce),
     },
   });
+
+  const mediaUrl = opts.mediaData ? mediaUrlForMessage(message.id) : null;
+  const withUrl =
+    mediaUrl && mediaUrl !== message.mediaUrl
+      ? await prisma.inquiryMessage.update({
+          where: { id: message.id },
+          data: { mediaUrl },
+        })
+      : message;
 
   await prisma.inquiry.update({
     where: { id: inquiry.id },
@@ -232,7 +251,19 @@ async function createChatMessage(opts: {
     });
   }
 
-  return { message, inquiryId: inquiry.id };
+  return {
+    message: {
+      id: withUrl.id,
+      body: withUrl.body,
+      type: withUrl.type,
+      mediaUrl: withUrl.mediaUrl,
+      mediaName: withUrl.mediaName,
+      mediaMime: withUrl.mediaMime,
+      viewOnce: withUrl.viewOnce,
+      createdAt: withUrl.createdAt,
+    },
+    inquiryId: inquiry.id,
+  };
 }
 
 export async function POST(req: Request) {
@@ -275,19 +306,13 @@ export async function POST(req: Request) {
       );
     }
 
-    let mediaUrl: string;
+    let mediaData: Buffer;
     try {
-      mediaUrl = await saveChatUpload(
-        session.user.id,
-        inquiryId,
-        file,
-        classified.kind,
-        classified.ext,
-      );
+      mediaData = await fileToBuffer(file);
     } catch (err) {
-      console.error("chat upload", err);
+      console.error("chat upload read", err);
       return NextResponse.json(
-        { error: "No se pudo guardar el archivo" },
+        { error: "No se pudo leer el archivo" },
         { status: 500 },
       );
     }
@@ -309,14 +334,13 @@ export async function POST(req: Request) {
       senderName: session.user.name || "Usuario",
       body: caption || defaultBody,
       type: classified.kind,
-      mediaUrl,
       mediaName: file.name || defaultBody,
       mediaMime: file.type || null,
+      mediaData,
       viewOnce,
     });
 
     if ("error" in result) {
-      await deleteChatUpload(mediaUrl);
       return NextResponse.json({ error: result.error }, { status: result.status });
     }
 
@@ -487,22 +511,31 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: "Ya fue abierta" }, { status: 400 });
   }
 
-  const url = message.mediaUrl;
+  const revealUrl =
+    message.mediaData && message.mediaData.length > 0
+      ? `data:${message.mediaMime || "image/jpeg"};base64,${Buffer.from(message.mediaData).toString("base64")}`
+      : message.mediaUrl;
+
   const updated = await prisma.inquiryMessage.update({
     where: { id: message.id },
     data: {
       viewedAt: new Date(),
       mediaUrl: null,
+      mediaData: null,
       body: "Abierto",
     },
   });
 
-  await deleteChatUpload(url);
-
   return NextResponse.json({
     message: {
-      ...updated,
-      mediaUrl: url, // one-time reveal payload for the opener
+      id: updated.id,
+      body: updated.body,
+      type: updated.type,
+      mediaUrl: revealUrl,
+      mediaName: updated.mediaName,
+      mediaMime: updated.mediaMime,
+      viewOnce: updated.viewOnce,
+      viewedAt: updated.viewedAt,
       revealOnce: true,
     },
   });
