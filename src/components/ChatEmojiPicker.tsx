@@ -55,7 +55,7 @@ export function ChatEmojiPicker({
     <div
       ref={ref}
       className={cn(
-        "absolute bottom-[calc(100%+0.5rem)] left-0 z-20 w-[min(100%,20rem)] overflow-hidden rounded-2xl border border-line bg-[#1f2c34]/98 shadow-2xl backdrop-blur-xl",
+        "absolute bottom-[calc(100%+0.5rem)] left-0 z-20 w-[min(100%,20rem)] overflow-hidden rounded-2xl border border-line bg-ink-elevated/98 shadow-2xl backdrop-blur-xl",
         className,
       )}
     >

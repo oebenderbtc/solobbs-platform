@@ -229,7 +229,7 @@ export default function MessagesPage() {
           {/* Conversation list */}
           <div
             className={cn(
-              "max-h-[70vh] space-y-0.5 overflow-y-auto bg-[#111b21] p-2 lg:border-r lg:border-white/5",
+              "chat-list-panel max-h-[70vh] space-y-0.5 overflow-y-auto p-2 lg:border-r lg:border-line",
               activeId && "hidden lg:block",
             )}
           >
@@ -252,16 +252,16 @@ export default function MessagesPage() {
                   <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-champagne/40 to-blush/50 text-sm font-semibold text-ink">
                     {initials(peer.name)}
                   </span>
-                  <span className="min-w-0 flex-1 border-b border-white/5 pb-3">
+                  <span className="min-w-0 flex-1 border-b border-line pb-3">
                     <span className="flex items-center justify-between gap-2">
                       <span className="truncate font-medium text-cream">
                         {peer.name}
                       </span>
-                      <span className="shrink-0 text-[10px] text-[#8696a0]">
+                      <span className="shrink-0 text-[10px] text-mist">
                         {shortTime(item.updatedAt)}
                       </span>
                     </span>
-                    <span className="mt-0.5 line-clamp-1 text-xs text-[#8696a0]">
+                    <span className="mt-0.5 line-clamp-1 text-xs text-mist">
                       {item.messages[0]?.body || item.subject}
                     </span>
                   </span>
@@ -273,13 +273,13 @@ export default function MessagesPage() {
           {/* Thread */}
           <div
             className={cn(
-              "chat-shell flex max-h-[min(74vh,calc(100dvh-11rem))] min-h-[55vh] flex-col overflow-hidden lg:min-h-[70vh] lg:rounded-none",
+              "chat-shell flex max-h-[min(74vh,calc(100dvh-11rem))] min-h-[55vh] flex-col overflow-hidden lg:min-h-[70vh] lg:rounded-none lg:border-0",
               !activeId && "hidden lg:flex",
             )}
           >
             {activeId ? (
               <>
-                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/5 bg-[#1f2c34] px-3 py-2.5 sm:px-4">
+                <div className="chat-header flex flex-wrap items-center justify-between gap-2 px-3 py-2.5 sm:px-4">
                   <div className="flex min-w-0 items-center gap-2.5">
                     <button
                       type="button"
@@ -296,9 +296,7 @@ export default function MessagesPage() {
                       <p className="truncate font-medium text-cream">
                         {peerName}
                       </p>
-                      <p className="text-xs text-[#8696a0]">
-                        {dict.messages.thread}
-                      </p>
+                      <p className="text-xs text-mist">{dict.messages.thread}</p>
                     </div>
                   </div>
                   <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
@@ -356,7 +354,7 @@ export default function MessagesPage() {
                       return (
                         <div
                           key={m.id}
-                          className="mx-auto max-w-[92%] rounded-full bg-black/35 px-3 py-1 text-center text-[11px] text-[#d1d7db] backdrop-blur-sm"
+                          className="mx-auto max-w-[92%] rounded-full border border-line bg-ink/70 px-3 py-1 text-center text-[11px] text-mist backdrop-blur-sm"
                         >
                           {m.body} · {shortTime(m.createdAt)}
                         </div>
@@ -389,9 +387,7 @@ export default function MessagesPage() {
                     <p className="text-xs font-medium text-champagne">
                       {dict.p2p.createTitle}
                     </p>
-                    <p className="text-[11px] text-[#8696a0]">
-                      {dict.p2p.createHint}
-                    </p>
+                    <p className="text-[11px] text-mist">{dict.p2p.createHint}</p>
                     <input
                       value={p2pTitle}
                       onChange={(e) => setP2pTitle(e.target.value)}
@@ -410,7 +406,7 @@ export default function MessagesPage() {
                       <button
                         type="button"
                         onClick={() => setShowP2P(false)}
-                        className="rounded-xl border border-white/10 px-3 py-2 text-sm text-[#8696a0]"
+                        className="rounded-xl border border-line px-3 py-2 text-sm text-mist"
                       >
                         {dict.common.cancel}
                       </button>
@@ -449,7 +445,7 @@ export default function MessagesPage() {
                       type="button"
                       onClick={() => setShowEmoji((v) => !v)}
                       className={cn(
-                        "flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-[#8696a0] hover:bg-white/5 hover:text-cream",
+                        "flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-mist hover:bg-white/5 hover:text-cream",
                         showEmoji && "bg-white/10 text-champagne",
                       )}
                       aria-label="Emoji"
@@ -483,7 +479,7 @@ export default function MessagesPage() {
             ) : (
               <div className="chat-wallpaper flex flex-1 flex-col items-center justify-center gap-2 p-8 text-center">
                 <MessageCircle className="h-10 w-10 text-champagne/50" />
-                <p className="text-sm text-[#8696a0]">{dict.messages.pick}</p>
+                <p className="text-sm text-mist">{dict.messages.pick}</p>
               </div>
             )}
           </div>
