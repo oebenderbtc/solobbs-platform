@@ -2,9 +2,17 @@
 
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ChevronLeft, Loader2, MessageCircle, Send, ShieldPlus } from "lucide-react";
+import {
+  ChevronLeft,
+  Loader2,
+  MessageCircle,
+  Send,
+  ShieldPlus,
+  Smile,
+} from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { ChatEmojiPicker } from "@/components/ChatEmojiPicker";
 import { P2POrderCard, type P2PEscrow } from "@/components/P2POrderCard";
 import { cn, formatDate } from "@/lib/utils";
 import { formatUSDT } from "@/lib/crypto-format";
@@ -29,6 +37,25 @@ type Message = {
   escrow?: P2PEscrow | null;
 };
 
+function shortTime(iso: string) {
+  try {
+    return new Date(iso).toLocaleTimeString(undefined, {
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  } catch {
+    return formatDate(iso);
+  }
+}
+
+function initials(name: string) {
+  return name
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((p) => p[0]?.toUpperCase() || "")
+    .join("");
+}
+
 export default function MessagesPage() {
   const { dict } = useLocale();
   const { data: session } = useSession();
@@ -41,10 +68,12 @@ export default function MessagesPage() {
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showP2P, setShowP2P] = useState(false);
+  const [showEmoji, setShowEmoji] = useState(false);
   const [p2pTitle, setP2pTitle] = useState("");
   const [p2pAmount, setP2pAmount] = useState("");
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const loadBalance = useCallback(async () => {
     if (session?.user?.role !== "CLIENT") return;
@@ -64,6 +93,7 @@ export default function MessagesPage() {
   async function openThread(id: string) {
     setActiveId(id);
     setShowP2P(false);
+    setShowEmoji(false);
     const res = await fetch(`/api/inquiries?id=${id}`);
     const data = await res.json();
     if (!res.ok) return;
@@ -88,6 +118,7 @@ export default function MessagesPage() {
     e.preventDefault();
     if (!activeId || !input.trim()) return;
     setSending(true);
+    setShowEmoji(false);
     const res = await fetch("/api/inquiries", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -99,6 +130,23 @@ export default function MessagesPage() {
       await openThread(activeId);
       loadList();
     }
+  }
+
+  function insertEmoji(emoji: string) {
+    const el = inputRef.current;
+    if (!el) {
+      setInput((v) => v + emoji);
+      return;
+    }
+    const start = el.selectionStart ?? input.length;
+    const end = el.selectionEnd ?? input.length;
+    const next = input.slice(0, start) + emoji + input.slice(end);
+    setInput(next);
+    requestAnimationFrame(() => {
+      el.focus();
+      const pos = start + emoji.length;
+      el.setSelectionRange(pos, pos);
+    });
   }
 
   async function createP2P(e: FormEvent) {
@@ -177,69 +225,92 @@ export default function MessagesPage() {
           }
         />
       ) : (
-        <div className="grid gap-5 lg:grid-cols-[0.9fr_1.1fr]">
+        <div className="grid gap-4 overflow-hidden rounded-[1.5rem] border border-line lg:grid-cols-[0.85fr_1.15fr] lg:gap-0">
+          {/* Conversation list */}
           <div
             className={cn(
-              "surface max-h-[70vh] space-y-2 overflow-y-auto rounded-[1.5rem] p-3",
+              "max-h-[70vh] space-y-0.5 overflow-y-auto bg-[#111b21] p-2 lg:border-r lg:border-white/5",
               activeId && "hidden lg:block",
             )}
           >
             {list.map((item) => {
               const me = session?.user?.id;
               const peer = item.model.id === me ? item.client : item.model;
+              const active = activeId === item.id;
               return (
                 <button
                   key={item.id}
                   type="button"
                   onClick={() => openThread(item.id)}
                   className={cn(
-                    "w-full rounded-2xl px-4 py-3 text-left transition",
-                    activeId === item.id
-                      ? "bg-champagne/15 text-cream"
-                      : "bg-ink/40 text-mist hover:bg-ink/60 hover:text-cream",
+                    "flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition",
+                    active
+                      ? "chat-list-item-active"
+                      : "hover:bg-white/[0.04]",
                   )}
                 >
-                  <p className="font-medium text-cream">{peer.name}</p>
-                  <p className="mt-1 line-clamp-1 text-xs">
-                    {item.messages[0]?.body || item.subject}
-                  </p>
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-champagne/40 to-blush/50 text-sm font-semibold text-ink">
+                    {initials(peer.name)}
+                  </span>
+                  <span className="min-w-0 flex-1 border-b border-white/5 pb-3">
+                    <span className="flex items-center justify-between gap-2">
+                      <span className="truncate font-medium text-cream">
+                        {peer.name}
+                      </span>
+                      <span className="shrink-0 text-[10px] text-[#8696a0]">
+                        {shortTime(item.updatedAt)}
+                      </span>
+                    </span>
+                    <span className="mt-0.5 line-clamp-1 text-xs text-[#8696a0]">
+                      {item.messages[0]?.body || item.subject}
+                    </span>
+                  </span>
                 </button>
               );
             })}
           </div>
 
+          {/* Thread */}
           <div
             className={cn(
-              "surface flex max-h-[min(70vh,calc(100dvh-12rem))] min-h-[55vh] flex-col rounded-[1.5rem] lg:min-h-0",
+              "chat-shell flex max-h-[min(74vh,calc(100dvh-11rem))] min-h-[55vh] flex-col overflow-hidden lg:min-h-[70vh] lg:rounded-none",
               !activeId && "hidden lg:flex",
             )}
           >
             {activeId ? (
               <>
-                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-3 py-3 sm:px-4">
-                  <div className="flex min-w-0 items-center gap-2">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/5 bg-[#1f2c34] px-3 py-2.5 sm:px-4">
+                  <div className="flex min-w-0 items-center gap-2.5">
                     <button
                       type="button"
                       onClick={() => setActiveId(null)}
-                      className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-line text-cream lg:hidden"
+                      className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-cream hover:bg-white/5 lg:hidden"
                       aria-label={dict.messages.backToList}
                     >
-                      <ChevronLeft className="h-4 w-4" />
+                      <ChevronLeft className="h-5 w-5" />
                     </button>
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-champagne/40 to-blush/50 text-sm font-semibold text-ink">
+                      {initials(peerName)}
+                    </span>
                     <div className="min-w-0">
-                      <p className="truncate font-medium">{peerName}</p>
-                      <p className="text-xs text-mist">{dict.messages.thread}</p>
+                      <p className="truncate font-medium text-cream">
+                        {peerName}
+                      </p>
+                      <p className="text-xs text-[#8696a0]">
+                        {dict.messages.thread}
+                      </p>
                     </div>
                   </div>
                   <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
-                    {session?.user?.role === "CLIENT" && walletBalance !== null && (
-                      <Link
-                        href="/dashboard/wallet"
-                        className="rounded-full bg-champagne/15 px-2.5 py-1 text-xs text-champagne"
-                      >
-                        {formatUSDT(walletBalance)}
-                      </Link>
-                    )}
+                    {session?.user?.role === "CLIENT" &&
+                      walletBalance !== null && (
+                        <Link
+                          href="/dashboard/wallet"
+                          className="rounded-full bg-champagne/15 px-2.5 py-1 text-xs text-champagne"
+                        >
+                          {formatUSDT(walletBalance)}
+                        </Link>
+                      )}
                     {session?.user?.role === "CLIENT" && (
                       <Link
                         href={`/m/${peerCode}`}
@@ -250,7 +321,8 @@ export default function MessagesPage() {
                     )}
                   </div>
                 </div>
-                <div className="flex-1 space-y-2.5 overflow-y-auto px-4 py-4">
+
+                <div className="chat-wallpaper flex-1 space-y-1.5 overflow-y-auto px-3 py-4 sm:px-5">
                   {messages.map((m) => {
                     const mine = m.sender.id === session?.user?.id;
                     const isP2PCard =
@@ -262,7 +334,10 @@ export default function MessagesPage() {
                       return (
                         <div
                           key={m.id}
-                          className={cn("flex", mine ? "justify-end" : "justify-start")}
+                          className={cn(
+                            "flex py-1",
+                            mine ? "justify-end" : "justify-start",
+                          )}
                         >
                           <P2POrderCard
                             escrow={m.escrow}
@@ -281,9 +356,9 @@ export default function MessagesPage() {
                       return (
                         <div
                           key={m.id}
-                          className="mx-auto max-w-[90%] rounded-full bg-ink/50 px-3 py-1 text-center text-[11px] text-mist"
+                          className="mx-auto max-w-[92%] rounded-full bg-black/35 px-3 py-1 text-center text-[11px] text-[#d1d7db] backdrop-blur-sm"
                         >
-                          {m.body} · {formatDate(m.createdAt)}
+                          {m.body} · {shortTime(m.createdAt)}
                         </div>
                       );
                     }
@@ -292,21 +367,14 @@ export default function MessagesPage() {
                       <div
                         key={m.id}
                         className={cn(
-                          "max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm",
-                          mine
-                            ? "ml-auto bg-gradient-to-br from-champagne/90 to-blush/90 text-ink"
-                            : "bg-ink/55 text-cream",
+                          "chat-bubble",
+                          mine ? "chat-bubble-mine" : "chat-bubble-theirs",
                         )}
                       >
-                        <p>{m.body}</p>
-                        <p
-                          className={cn(
-                            "mt-1 text-[10px]",
-                            mine ? "text-ink/70" : "text-mist",
-                          )}
-                        >
-                          {formatDate(m.createdAt)}
-                        </p>
+                        <p className="whitespace-pre-wrap">{m.body}</p>
+                        <span className="chat-bubble-meta">
+                          {shortTime(m.createdAt)}
+                        </span>
                       </div>
                     );
                   })}
@@ -316,23 +384,25 @@ export default function MessagesPage() {
                 {showP2P ? (
                   <form
                     onSubmit={createP2P}
-                    className="space-y-2 border-t border-line p-3"
+                    className="chat-composer space-y-2 p-3"
                   >
                     <p className="text-xs font-medium text-champagne">
                       {dict.p2p.createTitle}
                     </p>
-                    <p className="text-[11px] text-mist">{dict.p2p.createHint}</p>
+                    <p className="text-[11px] text-[#8696a0]">
+                      {dict.p2p.createHint}
+                    </p>
                     <input
                       value={p2pTitle}
                       onChange={(e) => setP2pTitle(e.target.value)}
-                      className="input-field !rounded-xl !py-2 text-sm"
+                      className="chat-input w-full !rounded-xl"
                       placeholder={dict.p2p.titlePlaceholder}
                       required
                     />
                     <input
                       value={p2pAmount}
                       onChange={(e) => setP2pAmount(e.target.value)}
-                      className="input-field !rounded-xl !py-2 text-sm"
+                      className="chat-input w-full !rounded-xl"
                       placeholder={dict.p2p.amountPlaceholder}
                       required
                     />
@@ -340,7 +410,7 @@ export default function MessagesPage() {
                       <button
                         type="button"
                         onClick={() => setShowP2P(false)}
-                        className="rounded-xl border border-line px-3 py-2 text-sm text-mist"
+                        className="rounded-xl border border-white/10 px-3 py-2 text-sm text-[#8696a0]"
                       >
                         {dict.common.cancel}
                       </button>
@@ -358,24 +428,48 @@ export default function MessagesPage() {
                     </div>
                   </form>
                 ) : (
-                  <form onSubmit={send} className="flex gap-2 border-t border-line p-3">
+                  <form
+                    onSubmit={send}
+                    className="chat-composer relative flex items-end gap-1.5 px-2 py-2.5 sm:gap-2 sm:px-3"
+                  >
+                    <ChatEmojiPicker
+                      open={showEmoji}
+                      onClose={() => setShowEmoji(false)}
+                      onPick={insertEmoji}
+                    />
                     <button
                       type="button"
                       onClick={() => setShowP2P(true)}
                       title={dict.p2p.createTitle}
-                      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-champagne/40 text-champagne hover:bg-champagne/10"
+                      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-champagne hover:bg-white/5"
                     >
-                      <ShieldPlus className="h-4 w-4" />
+                      <ShieldPlus className="h-5 w-5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowEmoji((v) => !v)}
+                      className={cn(
+                        "flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-[#8696a0] hover:bg-white/5 hover:text-cream",
+                        showEmoji && "bg-white/10 text-champagne",
+                      )}
+                      aria-label="Emoji"
+                    >
+                      <Smile className="h-5 w-5" />
                     </button>
                     <input
+                      ref={inputRef}
                       value={input}
                       onChange={(e) => setInput(e.target.value)}
-                      className="input-field !rounded-xl !py-2.5 text-sm"
+                      onFocus={() => setShowEmoji(false)}
+                      className="chat-input text-sm"
                       placeholder={dict.messages.placeholder}
+                      autoComplete="off"
                     />
                     <button
+                      type="submit"
                       disabled={sending || !input.trim()}
-                      className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-champagne to-blush text-ink disabled:opacity-50"
+                      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-champagne to-blush text-ink disabled:opacity-40"
+                      aria-label={dict.messages.placeholder}
                     >
                       {sending ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
@@ -387,8 +481,9 @@ export default function MessagesPage() {
                 )}
               </>
             ) : (
-              <div className="flex flex-1 items-center justify-center p-8 text-sm text-mist">
-                {dict.messages.pick}
+              <div className="chat-wallpaper flex flex-1 flex-col items-center justify-center gap-2 p-8 text-center">
+                <MessageCircle className="h-10 w-10 text-champagne/50" />
+                <p className="text-sm text-[#8696a0]">{dict.messages.pick}</p>
               </div>
             )}
           </div>
