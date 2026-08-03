@@ -230,6 +230,9 @@ export default function MessagesPage() {
       clearPending();
       await openThread(activeId);
       loadList();
+    } else {
+      const data = await res.json().catch(() => ({}));
+      alert(data.error || "No se pudo enviar el archivo");
     }
   }
 

@@ -275,13 +275,22 @@ export async function POST(req: Request) {
       );
     }
 
-    const mediaUrl = await saveChatUpload(
-      session.user.id,
-      inquiryId,
-      file,
-      classified.kind,
-      classified.ext,
-    );
+    let mediaUrl: string;
+    try {
+      mediaUrl = await saveChatUpload(
+        session.user.id,
+        inquiryId,
+        file,
+        classified.kind,
+        classified.ext,
+      );
+    } catch (err) {
+      console.error("chat upload", err);
+      return NextResponse.json(
+        { error: "No se pudo guardar el archivo" },
+        { status: 500 },
+      );
+    }
 
     const defaultBody =
       classified.kind === "IMAGE"
