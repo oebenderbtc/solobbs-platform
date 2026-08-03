@@ -6,18 +6,20 @@ export function Logo({
   className,
   size = 48,
   showWordmark = true,
+  wordmarkClassName,
   href = "/",
 }: {
   className?: string;
   size?: number;
   showWordmark?: boolean;
+  wordmarkClassName?: string;
   href?: string;
 }) {
   return (
     <Link
       href={href}
       className={cn(
-        "inline-flex items-center gap-3 transition opacity-95 hover:opacity-100",
+        "inline-flex max-w-full items-center gap-2.5 transition opacity-95 hover:opacity-100 sm:gap-3",
         className,
       )}
     >
@@ -26,12 +28,15 @@ export function Logo({
         alt="SoloBBs"
         width={size}
         height={size}
-        className="rounded-[0.75rem]"
+        className="shrink-0 rounded-[0.75rem]"
         priority
       />
       {showWordmark && (
         <span
-          className="font-semibold tracking-[-0.03em] text-cream"
+          className={cn(
+            "truncate font-semibold tracking-[-0.03em] text-cream",
+            wordmarkClassName,
+          )}
           style={{ fontSize: Math.max(18, Math.round(size * 0.48)) }}
         >
           <span className="text-cream">Solo</span>

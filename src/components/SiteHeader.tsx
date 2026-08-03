@@ -69,10 +69,7 @@ export function SiteHeader({ transparent = false }: { transparent?: boolean }) {
               key={link.label}
               href={link.href}
               onClick={onNavigate}
-              className={cn(
-                "transition hover:text-cream",
-                linkClassName,
-              )}
+              className={cn("transition hover:text-cream", linkClassName)}
             >
               {link.label}
             </a>
@@ -81,10 +78,7 @@ export function SiteHeader({ transparent = false }: { transparent?: boolean }) {
               key={link.label}
               href={link.href}
               onClick={onNavigate}
-              className={cn(
-                "transition hover:text-cream",
-                linkClassName,
-              )}
+              className={cn("transition hover:text-cream", linkClassName)}
             >
               {link.label}
             </Link>
@@ -104,43 +98,61 @@ export function SiteHeader({ transparent = false }: { transparent?: boolean }) {
           : "bg-transparent",
       )}
     >
-      <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-2 px-4 py-3 sm:gap-3 sm:px-6 sm:py-4">
-        <Logo className="min-w-0 shrink" size={40} />
+      <div className="mx-auto flex w-full max-w-6xl items-center gap-3 px-4 py-3 sm:px-6 sm:py-4">
+        <Logo
+          className="min-w-0 shrink"
+          size={36}
+          wordmarkClassName="hidden sm:inline"
+        />
 
         <NavLinks
-          className="hidden items-center gap-6 text-sm text-mist md:flex"
+          className="ml-auto hidden items-center gap-6 text-sm text-mist md:flex"
           linkClassName="py-1"
         />
 
-        <div className="flex shrink-0 items-center gap-1.5 sm:gap-2.5">
-          <CurrencySwitcher className="hidden sm:inline-flex" />
+        {/* Desktop / tablet actions */}
+        <div className="ml-auto hidden items-center gap-2.5 sm:flex md:ml-0">
+          <CurrencySwitcher />
           <LanguageSwitcher />
           {session?.user ? (
             <Link
               href={session.user.role === "ADMIN" ? "/admin" : "/dashboard"}
-              className="btn-primary !px-3 !py-2 text-sm sm:!px-4"
+              className="btn-primary !px-4 !py-2 text-sm"
             >
               {t("shell.modelNav.panel")}
             </Link>
           ) : (
             <>
-              <Link
-                href="/login"
-                className="btn-ghost hidden !px-3.5 !py-2 text-sm sm:inline-flex"
-              >
+              <Link href="/login" className="btn-ghost !px-3.5 !py-2 text-sm">
                 {t("header.login")}
               </Link>
-              <Link
-                href="/register"
-                className="btn-primary !px-3 !py-2 text-sm sm:!px-4"
-              >
+              <Link href="/register" className="btn-primary !px-4 !py-2 text-sm">
                 {t("header.join")}
               </Link>
             </>
           )}
+        </div>
+
+        {/* Mobile: one CTA + menu only */}
+        <div className="ml-auto flex items-center gap-2 sm:hidden">
+          {session?.user ? (
+            <Link
+              href={session.user.role === "ADMIN" ? "/admin" : "/dashboard"}
+              className="btn-primary !px-3 !py-2 text-sm"
+            >
+              {t("shell.modelNav.panel")}
+            </Link>
+          ) : (
+            <Link
+              href="/register"
+              className="btn-primary !px-3 !py-2 text-sm"
+            >
+              {t("header.join")}
+            </Link>
+          )}
           <button
             type="button"
-            className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-line text-cream md:hidden"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-line text-cream"
             aria-label={menuOpen ? t("common.closeMenu") : t("common.openMenu")}
             aria-expanded={menuOpen}
             onClick={() => setMenuOpen((v) => !v)}
@@ -148,6 +160,17 @@ export function SiteHeader({ transparent = false }: { transparent?: boolean }) {
             {menuOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
           </button>
         </div>
+
+        {/* Tablet hamburger when nav is still hidden */}
+        <button
+          type="button"
+          className="hidden h-10 w-10 items-center justify-center rounded-xl border border-line text-cream sm:inline-flex md:hidden"
+          aria-label={menuOpen ? t("common.closeMenu") : t("common.openMenu")}
+          aria-expanded={menuOpen}
+          onClick={() => setMenuOpen((v) => !v)}
+        >
+          {menuOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
+        </button>
       </div>
 
       {menuOpen && (
@@ -157,9 +180,15 @@ export function SiteHeader({ transparent = false }: { transparent?: boolean }) {
             className="flex flex-col text-base text-mist"
             linkClassName="rounded-xl px-3 py-3 hover:bg-white/5"
           />
-          <div className="mt-3 flex items-center justify-between gap-3 border-t border-line px-3 pt-4 sm:hidden">
-            <span className="text-xs text-mist">{t("common.currency")}</span>
-            <CurrencySwitcher />
+          <div className="mt-3 space-y-3 border-t border-line px-3 pt-4 sm:hidden">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-xs text-mist">{t("common.language")}</span>
+              <LanguageSwitcher />
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-xs text-mist">{t("common.currency")}</span>
+              <CurrencySwitcher />
+            </div>
           </div>
           {!session?.user && (
             <div className="mt-3 grid grid-cols-2 gap-2 px-1 pb-1 sm:hidden">
