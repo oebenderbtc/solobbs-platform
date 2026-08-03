@@ -24,7 +24,7 @@ export function Toast({
           initial={{ opacity: 0, y: 16, scale: 0.98 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: 10, scale: 0.98 }}
-          className="pointer-events-none fixed bottom-6 left-1/2 z-50 w-[min(92vw,380px)] -translate-x-1/2"
+          className="pointer-events-none fixed bottom-[calc(5.75rem+env(safe-area-inset-bottom))] left-1/2 z-50 w-[min(92vw,380px)] -translate-x-1/2"
         >
           <div
             className={cn(

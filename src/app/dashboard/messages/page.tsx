@@ -2,7 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Loader2, MessageCircle, Send, ShieldPlus } from "lucide-react";
+import { ChevronLeft, Loader2, MessageCircle, Send, ShieldPlus } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { P2POrderCard, type P2PEscrow } from "@/components/P2POrderCard";
@@ -178,7 +178,12 @@ export default function MessagesPage() {
         />
       ) : (
         <div className="grid gap-5 lg:grid-cols-[0.9fr_1.1fr]">
-          <div className="surface max-h-[70vh] space-y-2 overflow-y-auto rounded-[1.5rem] p-3">
+          <div
+            className={cn(
+              "surface max-h-[70vh] space-y-2 overflow-y-auto rounded-[1.5rem] p-3",
+              activeId && "hidden lg:block",
+            )}
+          >
             {list.map((item) => {
               const me = session?.user?.id;
               const peer = item.model.id === me ? item.client : item.model;
@@ -203,15 +208,30 @@ export default function MessagesPage() {
             })}
           </div>
 
-          <div className="surface flex max-h-[70vh] flex-col rounded-[1.5rem]">
+          <div
+            className={cn(
+              "surface flex max-h-[min(70vh,calc(100dvh-12rem))] min-h-[55vh] flex-col rounded-[1.5rem] lg:min-h-0",
+              !activeId && "hidden lg:flex",
+            )}
+          >
             {activeId ? (
               <>
-                <div className="flex items-center justify-between gap-2 border-b border-line px-4 py-3">
-                  <div>
-                    <p className="font-medium">{peerName}</p>
-                    <p className="text-xs text-mist">{dict.messages.thread}</p>
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-3 py-3 sm:px-4">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setActiveId(null)}
+                      className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-line text-cream lg:hidden"
+                      aria-label={dict.messages.backToList}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </button>
+                    <div className="min-w-0">
+                      <p className="truncate font-medium">{peerName}</p>
+                      <p className="text-xs text-mist">{dict.messages.thread}</p>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-3">
+                  <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
                     {session?.user?.role === "CLIENT" && walletBalance !== null && (
                       <Link
                         href="/dashboard/wallet"

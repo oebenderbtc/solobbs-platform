@@ -288,7 +288,7 @@ export default function PublicModelPage({
                   <button
                     type="button"
                     onClick={() => goGallery(-1)}
-                    className="absolute left-3 top-1/2 z-10 -translate-y-1/2 rounded-full border border-line bg-ink/70 p-2 text-cream backdrop-blur transition hover:bg-ink/90"
+                    className="absolute left-2 top-1/2 z-10 inline-flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-line bg-ink/70 text-cream backdrop-blur transition hover:bg-ink/90 sm:left-3"
                     aria-label={dict.common.prev}
                   >
                     <ChevronLeft className="h-5 w-5" />
@@ -296,7 +296,7 @@ export default function PublicModelPage({
                   <button
                     type="button"
                     onClick={() => goGallery(1)}
-                    className="absolute right-3 top-1/2 z-10 -translate-y-1/2 rounded-full border border-line bg-ink/70 p-2 text-cream backdrop-blur transition hover:bg-ink/90"
+                    className="absolute right-2 top-1/2 z-10 inline-flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-line bg-ink/70 text-cream backdrop-blur transition hover:bg-ink/90 sm:right-3"
                     aria-label={dict.common.next}
                   >
                     <ChevronRight className="h-5 w-5" />
@@ -407,19 +407,19 @@ export default function PublicModelPage({
                   <button
                     type="button"
                     onClick={() => setTab("message")}
-                    className={`rounded-full px-3 py-1.5 text-xs ${
+                    className={`min-h-11 flex-1 rounded-full px-3 py-2.5 text-sm ${
                       tab === "message"
                         ? "bg-champagne/20 text-champagne"
                         : "text-mist"
                     }`}
                   >
-                    <MessageSquare className="mr-1 inline h-3.5 w-3.5" />
+                    <MessageSquare className="mr-1 inline h-4 w-4" />
                     {dict.gallery.tabMessage}
                   </button>
                   <button
                     type="button"
                     onClick={() => setTab("book")}
-                    className={`rounded-full px-3 py-1.5 text-xs ${
+                    className={`min-h-11 flex-1 rounded-full px-3 py-2.5 text-sm ${
                       tab === "book"
                         ? "bg-champagne/20 text-champagne"
                         : "text-mist"

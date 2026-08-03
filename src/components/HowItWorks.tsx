@@ -248,29 +248,31 @@ export function HowItWorks() {
           </motion.p>
         </div>
 
-        <div className="mt-10 flex gap-2">
+        <div className="mt-10 flex gap-1 sm:gap-2">
           {steps.map((s, i) => (
             <button
               key={s.id}
               type="button"
               onClick={() => setActive(i)}
               aria-label={t("how.goToStep", { n: s.id })}
-              className="group relative h-1.5 flex-1 overflow-hidden rounded-full bg-ink-elevated"
+              className="group relative flex h-11 flex-1 items-center overflow-hidden rounded-full px-0.5"
             >
-              <motion.span
-                className="absolute inset-y-0 left-0 bg-gradient-to-r from-champagne to-blush"
-                initial={false}
-                animate={{
-                  width: i < active ? "100%" : i === active ? "100%" : "0%",
-                  opacity: i === active ? 1 : i < active ? 0.55 : 0.2,
-                }}
-                transition={
-                  i === active && !reduce && !paused
-                    ? { duration: 4.2, ease: "linear" }
-                    : { duration: 0.35 }
-                }
-                key={`${active}-${i}-${paused}`}
-              />
+              <span className="relative h-1.5 w-full overflow-hidden rounded-full bg-ink-elevated">
+                <motion.span
+                  className="absolute inset-y-0 left-0 bg-gradient-to-r from-champagne to-blush"
+                  initial={false}
+                  animate={{
+                    width: i < active ? "100%" : i === active ? "100%" : "0%",
+                    opacity: i === active ? 1 : i < active ? 0.55 : 0.2,
+                  }}
+                  transition={
+                    i === active && !reduce && !paused
+                      ? { duration: 4.2, ease: "linear" }
+                      : { duration: 0.35 }
+                  }
+                  key={`${active}-${i}-${paused}`}
+                />
+              </span>
             </button>
           ))}
         </div>
@@ -325,7 +327,7 @@ export function HowItWorks() {
             })}
           </div>
 
-          <div className="relative min-h-[420px]">
+          <div className="relative min-h-[320px] sm:min-h-[420px]">
             <AnimatePresence mode="wait">
               <motion.div
                 key={`${locale}-${step.id}`}

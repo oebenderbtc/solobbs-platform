@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
+import { ChevronLeft } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Toast, ToastTone } from "@/components/ui/Toast";
 import { formatDate } from "@/lib/utils";
@@ -84,7 +85,12 @@ export default function AdminSupportPage() {
       />
 
       <div className="grid gap-5 lg:grid-cols-[0.9fr_1.1fr]">
-        <div className="surface max-h-[70vh] overflow-y-auto rounded-[1.5rem] p-3">
+        <div
+          className={cn(
+            "surface max-h-[70vh] overflow-y-auto rounded-[1.5rem] p-3",
+            activeId && "hidden lg:block",
+          )}
+        >
           {conversations.length === 0 && (
             <p className="p-4 text-sm text-mist">Aún no hay chats de soporte.</p>
           )}
@@ -114,11 +120,31 @@ export default function AdminSupportPage() {
           ))}
         </div>
 
-        <div className="surface flex min-h-[70vh] flex-col rounded-[1.5rem]">
+        <div
+          className={cn(
+            "surface flex min-h-[55vh] max-h-[min(70vh,calc(100dvh-12rem))] flex-col rounded-[1.5rem] lg:min-h-[70vh]",
+            !activeId && "hidden lg:flex",
+          )}
+        >
           {!activeId ? (
             <p className="m-auto text-sm text-mist">Selecciona una conversación</p>
           ) : (
             <>
+              <div className="flex items-center gap-2 border-b border-line px-3 py-3 lg:hidden">
+                <button
+                  type="button"
+                  onClick={() => setActiveId(null)}
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-line text-cream"
+                  aria-label={dict.messages.backToList}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+                <p className="truncate text-sm font-medium">
+                  {conversations.find((c) => c.id === activeId)?.user?.name ||
+                    conversations.find((c) => c.id === activeId)?.visitorName ||
+                    "Chat"}
+                </p>
+              </div>
               <div className="flex-1 space-y-3 overflow-y-auto p-4">
                 {messages.map((m) => (
                   <div

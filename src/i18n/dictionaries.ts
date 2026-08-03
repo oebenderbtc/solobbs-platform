@@ -708,6 +708,7 @@ const es = {
     pick: "Elige una conversación",
     thread: "Chat privado",
     goInbox: "Ir a mensajes",
+    backToList: "Conversaciones",
   },
   p2p: {
     orderBadge: "Orden P2P",
@@ -1483,6 +1484,7 @@ const en = {
     pick: "Pick a conversation",
     thread: "Private chat",
     goInbox: "Go to messages",
+    backToList: "Conversations",
   },
   p2p: {
     orderBadge: "P2P order",

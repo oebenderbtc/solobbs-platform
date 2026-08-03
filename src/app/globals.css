@@ -60,6 +60,7 @@ body {
   font-weight: 400;
   letter-spacing: 0.01em;
   min-height: 100%;
+  overflow-x: hidden;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
 }

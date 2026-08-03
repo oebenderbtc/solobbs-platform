@@ -242,9 +242,9 @@ export default function GalleryPage() {
             </div>
             <form
               onSubmit={onStoryUpload}
-              className="flex flex-wrap items-end gap-3"
+              className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end"
             >
-              <label className="block min-w-[200px] flex-1">
+              <label className="block w-full flex-1 sm:min-w-[200px]">
                 <span className="mb-2 block text-sm text-mist">
                   {dict.gallery.addStory}
                 </span>
@@ -253,18 +253,18 @@ export default function GalleryPage() {
                   type="file"
                   accept="image/*,video/mp4,video/webm"
                   required
-                  className="input-field file:mr-3 file:rounded-lg file:border-0 file:bg-champagne/20 file:px-3 file:py-1.5 file:text-champagne"
+                  className="input-field w-full file:mr-3 file:rounded-lg file:border-0 file:bg-champagne/20 file:px-3 file:py-1.5 file:text-champagne"
                 />
               </label>
-              <label className="block min-w-[160px] flex-1">
+              <label className="block w-full flex-1 sm:min-w-[160px]">
                 <span className="mb-2 block text-sm text-mist">
                   {dict.gallery.caption}
                 </span>
-                <input name="caption" className="input-field" />
+                <input name="caption" className="input-field w-full" />
               </label>
               <button
                 disabled={storyUploading}
-                className="btn-primary !px-4 !py-2.5 text-sm"
+                className="btn-primary w-full !px-4 !py-2.5 text-sm sm:w-auto"
               >
                 {storyUploading ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -308,9 +308,9 @@ export default function GalleryPage() {
                     <button
                       type="button"
                       onClick={() => removeStory(s.id)}
-                      className="absolute right-1 top-1 rounded-full bg-black/60 p-1 text-cream"
+                      className="absolute right-1 top-1 inline-flex h-9 w-9 items-center justify-center rounded-full bg-black/60 text-cream"
                     >
-                      <Trash2 className="h-3 w-3" />
+                      <Trash2 className="h-4 w-4" />
                     </button>
                     {s.expiresAt && (
                       <p className="px-1.5 py-1 text-[10px] text-mist">
@@ -326,9 +326,9 @@ export default function GalleryPage() {
           {/* Gallery media */}
           <form
             onSubmit={onUpload}
-            className="surface flex flex-wrap items-end gap-3 rounded-[1.75rem] p-5 sm:p-6"
+            className="surface flex flex-col gap-3 rounded-[1.75rem] p-5 sm:flex-row sm:flex-wrap sm:items-end sm:p-6"
           >
-            <label className="block min-w-[220px] flex-1">
+            <label className="block w-full flex-1 sm:min-w-[220px]">
               <span className="mb-2 block text-sm text-mist">
                 {dict.gallery.addPhoto}
               </span>
@@ -337,18 +337,18 @@ export default function GalleryPage() {
                 type="file"
                 accept="image/*,video/mp4,video/webm,video/quicktime"
                 required
-                className="input-field file:mr-3 file:rounded-lg file:border-0 file:bg-champagne/20 file:px-3 file:py-1.5 file:text-champagne"
+                className="input-field w-full file:mr-3 file:rounded-lg file:border-0 file:bg-champagne/20 file:px-3 file:py-1.5 file:text-champagne"
               />
             </label>
-            <label className="block min-w-[180px] flex-1">
+            <label className="block w-full flex-1 sm:min-w-[180px]">
               <span className="mb-2 block text-sm text-mist">
                 {dict.gallery.caption}
               </span>
-              <input name="caption" className="input-field" />
+              <input name="caption" className="input-field w-full" />
             </label>
             <button
               disabled={uploading}
-              className="btn-primary !px-4 !py-2.5 text-sm"
+              className="btn-primary w-full !px-4 !py-2.5 text-sm sm:w-auto"
             >
               {uploading ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -410,7 +410,7 @@ export default function GalleryPage() {
                         <button
                           type="button"
                           onClick={() => setCover(img.id)}
-                          className="rounded-lg p-1.5 text-mist hover:text-champagne"
+                          className="inline-flex h-10 w-10 items-center justify-center rounded-lg text-mist hover:text-champagne"
                           title={dict.gallery.setCover}
                         >
                           <Star className="h-4 w-4" />
@@ -419,7 +419,7 @@ export default function GalleryPage() {
                       <button
                         type="button"
                         onClick={() => remove(img.id)}
-                        className="rounded-lg p-1.5 text-mist hover:text-rose-300"
+                        className="inline-flex h-10 w-10 items-center justify-center rounded-lg text-mist hover:text-rose-300"
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>

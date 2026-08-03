@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
+import { Menu, X } from "lucide-react";
 import { Logo } from "./Logo";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import { CurrencySwitcher } from "./CurrencySwitcher";
@@ -15,6 +16,7 @@ export function SiteHeader({ transparent = false }: { transparent?: boolean }) {
   const pathname = usePathname();
   const { data: session } = useSession();
   const [scrolled, setScrolled] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 24);
@@ -23,8 +25,23 @@ export function SiteHeader({ transparent = false }: { transparent?: boolean }) {
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [menuOpen]);
+
   const onModelsSection =
-    pathname === "/models" || pathname.startsWith("/models/") || pathname.startsWith("/m/");
+    pathname === "/models" ||
+    pathname.startsWith("/models/") ||
+    pathname.startsWith("/m/");
 
   const links = onModelsSection
     ? [{ href: "/", label: t("header.home") }]
@@ -35,54 +52,73 @@ export function SiteHeader({ transparent = false }: { transparent?: boolean }) {
         { href: "#pagos", label: t("header.payments") },
       ];
 
+  function NavLinks({
+    onNavigate,
+    className,
+    linkClassName,
+  }: {
+    onNavigate?: () => void;
+    className?: string;
+    linkClassName?: string;
+  }) {
+    return (
+      <nav className={className}>
+        {links.map((link) =>
+          link.href.startsWith("#") ? (
+            <a
+              key={link.label}
+              href={link.href}
+              onClick={onNavigate}
+              className={cn(
+                "transition hover:text-cream",
+                linkClassName,
+              )}
+            >
+              {link.label}
+            </a>
+          ) : (
+            <Link
+              key={link.label}
+              href={link.href}
+              onClick={onNavigate}
+              className={cn(
+                "transition hover:text-cream",
+                linkClassName,
+              )}
+            >
+              {link.label}
+            </Link>
+          ),
+        )}
+      </nav>
+    );
+  }
+
   return (
     <header
       className={cn(
         "fixed inset-x-0 top-0 z-40 transition-all duration-300",
-        scrolled || !transparent
+        "pt-[env(safe-area-inset-top)]",
+        scrolled || !transparent || menuOpen
           ? "border-b border-line/80 bg-ink/80 backdrop-blur-xl"
           : "bg-transparent",
       )}
     >
-      <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-5 py-4 sm:px-6">
-        <Logo />
-        <nav className="hidden items-center gap-7 text-sm text-mist md:flex">
-          {links.map((link) =>
-            link.href.startsWith("#") ? (
-              <a
-                key={link.label}
-                href={link.href}
-                className="transition hover:text-cream"
-              >
-                {link.label}
-              </a>
-            ) : (
-              <Link
-                key={link.label}
-                href={link.href}
-                className="transition hover:text-cream"
-              >
-                {link.label}
-              </Link>
-            ),
-          )}
-        </nav>
-        {/* Mobile: show Inicio when on models */}
-        {onModelsSection && (
-          <Link
-            href="/"
-            className="text-sm text-mist transition hover:text-cream md:hidden"
-          >
-            {t("header.home")}
-          </Link>
-        )}
-        <div className="flex items-center gap-2 sm:gap-3">
+      <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-2 px-4 py-3 sm:gap-3 sm:px-6 sm:py-4">
+        <Logo className="min-w-0 shrink" size={40} />
+
+        <NavLinks
+          className="hidden items-center gap-6 text-sm text-mist md:flex"
+          linkClassName="py-1"
+        />
+
+        <div className="flex shrink-0 items-center gap-1.5 sm:gap-2.5">
           <CurrencySwitcher className="hidden sm:inline-flex" />
           <LanguageSwitcher />
           {session?.user ? (
             <Link
               href={session.user.role === "ADMIN" ? "/admin" : "/dashboard"}
-              className="btn-primary !px-3.5 !py-2 text-sm sm:!px-4"
+              className="btn-primary !px-3 !py-2 text-sm sm:!px-4"
             >
               {t("shell.modelNav.panel")}
             </Link>
@@ -90,20 +126,61 @@ export function SiteHeader({ transparent = false }: { transparent?: boolean }) {
             <>
               <Link
                 href="/login"
-                className="btn-ghost !px-3.5 !py-2 text-sm sm:!px-4"
+                className="btn-ghost hidden !px-3.5 !py-2 text-sm sm:inline-flex"
               >
                 {t("header.login")}
               </Link>
               <Link
                 href="/register"
-                className="btn-primary !px-3.5 !py-2 text-sm sm:!px-4"
+                className="btn-primary !px-3 !py-2 text-sm sm:!px-4"
               >
                 {t("header.join")}
               </Link>
             </>
           )}
+          <button
+            type="button"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-line text-cream md:hidden"
+            aria-label={menuOpen ? t("common.closeMenu") : t("common.openMenu")}
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen((v) => !v)}
+          >
+            {menuOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
+          </button>
         </div>
       </div>
+
+      {menuOpen && (
+        <div className="border-t border-line bg-ink/95 px-3 py-3 backdrop-blur-xl md:hidden">
+          <NavLinks
+            onNavigate={() => setMenuOpen(false)}
+            className="flex flex-col text-base text-mist"
+            linkClassName="rounded-xl px-3 py-3 hover:bg-white/5"
+          />
+          <div className="mt-3 flex items-center justify-between gap-3 border-t border-line px-3 pt-4 sm:hidden">
+            <span className="text-xs text-mist">{t("common.currency")}</span>
+            <CurrencySwitcher />
+          </div>
+          {!session?.user && (
+            <div className="mt-3 grid grid-cols-2 gap-2 px-1 pb-1 sm:hidden">
+              <Link
+                href="/login"
+                onClick={() => setMenuOpen(false)}
+                className="btn-ghost w-full justify-center !py-2.5 text-sm"
+              >
+                {t("header.login")}
+              </Link>
+              <Link
+                href="/register"
+                onClick={() => setMenuOpen(false)}
+                className="btn-primary w-full justify-center !py-2.5 text-sm"
+              >
+                {t("header.join")}
+              </Link>
+            </div>
+          )}
+        </div>
+      )}
     </header>
   );
 }

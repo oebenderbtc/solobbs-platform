@@ -141,7 +141,8 @@ export function SupportChat() {
         whileHover={reduce ? undefined : { scale: 1.05 }}
         whileTap={{ scale: 0.96 }}
         className={cn(
-          "fixed bottom-5 right-5 z-[60] flex h-14 w-14 items-center justify-center rounded-full shadow-2xl shadow-black/40",
+          "fixed z-[60] flex h-14 w-14 items-center justify-center rounded-full shadow-2xl shadow-black/40",
+          "bottom-[max(1.25rem,env(safe-area-inset-bottom))] right-[max(1.25rem,env(safe-area-inset-right))]",
           "bg-gradient-to-br from-champagne to-blush text-ink",
         )}
       >
@@ -155,7 +156,7 @@ export function SupportChat() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 14, scale: 0.96 }}
             transition={{ duration: 0.28 }}
-            className="fixed bottom-24 right-5 z-[60] flex h-[min(74vh,580px)] w-[min(92vw,400px)] flex-col overflow-hidden rounded-[1.5rem] border border-line bg-ink-soft/95 shadow-2xl backdrop-blur-xl"
+            className="fixed bottom-[calc(5.5rem+env(safe-area-inset-bottom))] left-3 right-3 z-[60] flex h-[min(70vh,560px)] max-h-[calc(100dvh-8rem)] flex-col overflow-hidden rounded-[1.5rem] border border-line bg-ink-soft/95 shadow-2xl backdrop-blur-xl sm:left-auto sm:right-[max(1.25rem,env(safe-area-inset-right))] sm:w-[min(92vw,400px)]"
           >
             <div className="flex items-center gap-3 border-b border-line px-4 py-3.5">
               <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-champagne/15 text-champagne">
@@ -226,7 +227,7 @@ export function SupportChat() {
             </div>
 
             {!session?.user && (
-              <div className="grid grid-cols-2 gap-2 border-t border-line px-3 pt-3">
+              <div className="grid grid-cols-1 gap-2 border-t border-line px-3 pt-3 sm:grid-cols-2">
                 <input
                   value={name}
                   onChange={(e) => setName(e.target.value)}

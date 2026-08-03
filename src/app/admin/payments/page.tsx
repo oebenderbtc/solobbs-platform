@@ -22,7 +22,32 @@ export default async function AdminPaymentsPage() {
         description={dict.admin.paymentsDesc}
       />
 
-      <div className="surface overflow-x-auto rounded-[1.75rem]">
+      <div className="space-y-3 md:hidden">
+        {payments.map((p) => (
+          <div key={p.id} className="surface rounded-2xl p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="truncate font-medium">{p.user.name}</p>
+                <p className="text-xs text-mist">
+                  {p.escrow?.model.name || "—"} · {formatDate(p.createdAt)}
+                </p>
+              </div>
+              <p className="shrink-0 font-medium text-champagne">
+                {formatCOP(p.amount)}
+              </p>
+            </div>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <StatusBadge status={p.method} />
+              <StatusBadge status={p.status} />
+              <span className="font-mono text-[11px] text-mist">
+                {p.externalId || p.cardLast4 || "—"}
+              </span>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="surface hidden overflow-x-auto rounded-[1.75rem] md:block">
         <table className="min-w-full text-sm">
           <thead className="border-b border-line text-left text-xs uppercase tracking-[0.14em] text-mist">
             <tr>
@@ -42,8 +67,12 @@ export default async function AdminPaymentsPage() {
                 <td className="px-5 py-4">{p.user.name}</td>
                 <td className="px-5 py-4">{p.escrow?.model.name || "—"}</td>
                 <td className="px-5 py-4">{formatCOP(p.amount)}</td>
-                <td className="px-5 py-4"><StatusBadge status={p.method} /></td>
-                <td className="px-5 py-4"><StatusBadge status={p.status} /></td>
+                <td className="px-5 py-4">
+                  <StatusBadge status={p.method} />
+                </td>
+                <td className="px-5 py-4">
+                  <StatusBadge status={p.status} />
+                </td>
                 <td className="px-5 py-4 font-mono text-xs text-mist">
                   {p.externalId || p.cardLast4 || "—"}
                 </td>

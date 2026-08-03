@@ -86,7 +86,7 @@ export default function HomePage() {
               initial={reduce ? false : { opacity: 0, y: 28 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.8, delay: 0.18, ease: easeOut }}
-              className="font-display text-6xl leading-[0.95] tracking-tight text-cream sm:text-7xl lg:text-8xl"
+              className="font-display text-5xl leading-[0.95] tracking-tight text-cream sm:text-7xl lg:text-8xl"
             >
               Solo<span className="text-blush">BBs</span>
             </motion.h1>

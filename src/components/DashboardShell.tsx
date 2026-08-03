@@ -57,6 +57,15 @@ export function DashboardShell({
     setOpen(false);
   }, [pathname]);
 
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [open]);
+
   const items: NavItem[] = isAdmin
     ? [
         { href: "/admin", label: dict.shell.adminNav.overview, icon: LayoutDashboard },
@@ -177,9 +186,9 @@ export function DashboardShell({
         {nav}
       </aside>
 
-      <div className="sticky top-0 z-30 flex items-center justify-between border-b border-line bg-ink/85 px-4 py-3 backdrop-blur-xl lg:hidden">
-        <Logo href={homeHref} size={44} />
-        <div className="flex items-center gap-2">
+      <div className="sticky top-0 z-30 flex items-center justify-between gap-2 border-b border-line bg-ink/85 px-3 py-3 backdrop-blur-xl pt-[max(0.75rem,env(safe-area-inset-top))] lg:hidden sm:px-4">
+        <Logo href={homeHref} size={40} className="min-w-0 shrink" />
+        <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
           <NotificationBell />
           <CurrencySwitcher className="hidden sm:inline-flex" />
           <LanguageSwitcher />
@@ -187,7 +196,7 @@ export function DashboardShell({
             type="button"
             aria-label={open ? t("common.closeMenu") : t("common.openMenu")}
             onClick={() => setOpen((v) => !v)}
-            className="rounded-xl border border-line p-2 text-cream"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-line text-cream"
           >
             {open ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
           </button>
@@ -226,7 +235,7 @@ export function DashboardShell({
           <LanguageSwitcher />
         </div>
 
-        <main className="px-4 py-6 sm:px-7 lg:px-10 lg:py-9">
+        <main className="px-4 py-6 pb-[calc(7rem+env(safe-area-inset-bottom))] sm:px-7 lg:px-10 lg:py-9 lg:pb-9">
           <motion.div
             key={pathname}
             initial={reduce ? false : { opacity: 0, y: 10 }}

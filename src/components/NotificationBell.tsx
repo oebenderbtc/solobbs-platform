@@ -88,7 +88,7 @@ export function NotificationBell() {
               initial={reduce ? false : { opacity: 0, y: 8, scale: 0.98 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={reduce ? undefined : { opacity: 0, y: 6, scale: 0.98 }}
-              className="absolute right-0 z-50 mt-2 w-[min(92vw,360px)] overflow-hidden rounded-[1.35rem] border border-line bg-ink-soft/98 shadow-2xl backdrop-blur-xl"
+              className="fixed left-3 right-3 top-[calc(4.25rem+env(safe-area-inset-top))] z-50 max-h-[min(70vh,420px)] overflow-hidden rounded-[1.35rem] border border-line bg-ink-soft/98 shadow-2xl backdrop-blur-xl sm:absolute sm:left-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-[min(360px,calc(100vw-2rem))]"
             >
               <div className="flex items-center justify-between border-b border-line px-4 py-3">
                 <p className="text-sm font-medium">{dict.notifications.title}</p>

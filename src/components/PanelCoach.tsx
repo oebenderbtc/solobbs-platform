@@ -73,7 +73,7 @@ export function PanelCoach({ role }: { role: string }) {
           initial={reduce ? false : { opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
           onClick={reopen}
-          className="fixed bottom-24 right-5 z-50 inline-flex items-center gap-2 rounded-full border border-line bg-ink-elevated/95 px-3.5 py-2.5 text-sm text-cream shadow-2xl backdrop-blur-xl hover:border-champagne/40"
+          className="fixed bottom-[calc(5.5rem+env(safe-area-inset-bottom))] left-[max(1rem,env(safe-area-inset-left))] z-50 inline-flex items-center gap-2 rounded-full border border-line bg-ink-elevated/95 px-3.5 py-2.5 text-sm text-cream shadow-2xl backdrop-blur-xl hover:border-champagne/40 sm:left-auto sm:right-[calc(5.25rem+env(safe-area-inset-right))]"
           aria-label={t("coach.showHelp")}
         >
           <HelpCircle className="h-4 w-4 text-champagne" />
@@ -89,7 +89,7 @@ export function PanelCoach({ role }: { role: string }) {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={reduce ? undefined : { opacity: 0, y: 16, scale: 0.96 }}
             transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
-            className="fixed bottom-24 right-5 z-50 w-[min(92vw,380px)]"
+            className="fixed bottom-[calc(5.5rem+env(safe-area-inset-bottom))] left-3 right-3 z-50 sm:left-auto sm:right-[calc(5.25rem+env(safe-area-inset-right))] sm:w-[min(92vw,380px)]"
             role="status"
             aria-live="polite"
           >

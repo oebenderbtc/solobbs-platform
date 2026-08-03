@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { cookies } from "next/headers";
 import { Outfit } from "next/font/google";
 import { Providers } from "@/components/Providers";
@@ -15,6 +15,13 @@ const outfit = Outfit({
   subsets: ["latin"],
   weight: ["300", "400", "500", "600", "700"],
 });
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: "#0d0b0f",
+};
 
 export async function generateMetadata(): Promise<Metadata> {
   const dict = await getDictionary();
@@ -45,7 +52,7 @@ export default async function RootLayout({
       data-scroll-behavior="smooth"
       className={`${outfit.variable} h-full`}
     >
-      <body className={`${outfit.className} min-h-full antialiased`}>
+      <body className={`${outfit.className} min-h-full overflow-x-hidden antialiased`}>
         <Providers locale={locale} currency={currency}>
           {children}
           <SupportChat />
