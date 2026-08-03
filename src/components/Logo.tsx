@@ -34,10 +34,9 @@ export function Logo({
       {showWordmark && (
         <span
           className={cn(
-            "truncate font-semibold tracking-[-0.03em] text-cream",
+            "truncate text-[17px] font-semibold tracking-[-0.03em] text-cream sm:text-lg",
             wordmarkClassName,
           )}
-          style={{ fontSize: Math.max(18, Math.round(size * 0.48)) }}
         >
           <span className="text-cream">Solo</span>
           <span className="text-blush">BBs</span>
