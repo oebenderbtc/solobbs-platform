@@ -181,16 +181,22 @@ model Inquiry {
 }
 
 model InquiryMessage {
-  id        String   @id @default(cuid())
-  body      String
-  type      String   @default("TEXT") // TEXT | P2P
-  inquiryId String
-  inquiry   Inquiry  @relation(fields: [inquiryId], references: [id], onDelete: Cascade)
-  senderId  String
-  sender    User     @relation(fields: [senderId], references: [id])
-  escrowId  String?
-  escrow    Escrow?  @relation(fields: [escrowId], references: [id])
-  createdAt DateTime @default(now())
+  id         String    @id @default(cuid())
+  body       String
+  type       String    @default("TEXT") // TEXT | P2P | IMAGE | VIDEO | AUDIO | FILE
+  mediaUrl   String?
+  mediaName  String?
+  mediaMime  String?
+  viewOnce   Boolean   @default(false)
+  viewedAt   DateTime?
+  readAt     DateTime?
+  inquiryId  String
+  inquiry    Inquiry   @relation(fields: [inquiryId], references: [id], onDelete: Cascade)
+  senderId   String
+  sender     User      @relation(fields: [senderId], references: [id])
+  escrowId   String?
+  escrow     Escrow?   @relation(fields: [escrowId], references: [id])
+  createdAt  DateTime  @default(now())
 }
 
 model UserPaymentMethod {

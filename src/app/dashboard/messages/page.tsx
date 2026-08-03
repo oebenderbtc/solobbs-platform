@@ -1,18 +1,34 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import {
+  FormEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import Link from "next/link";
 import {
+  Camera,
   ChevronLeft,
   Loader2,
+  Mic,
+  Paperclip,
   MessageCircle,
   Send,
   ShieldPlus,
   Smile,
+  Square,
+  X,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ChatEmojiPicker } from "@/components/ChatEmojiPicker";
+import {
+  FileChip,
+  MessageTicks,
+  ViewOnceBadge,
+} from "@/components/ChatMessageMeta";
 import { P2POrderCard, type P2PEscrow } from "@/components/P2POrderCard";
 import { cn, formatDate } from "@/lib/utils";
 import { formatUSDT } from "@/lib/crypto-format";
@@ -32,6 +48,14 @@ type Message = {
   id: string;
   body: string;
   type?: string;
+  mediaUrl?: string | null;
+  mediaName?: string | null;
+  mediaMime?: string | null;
+  viewOnce?: boolean;
+  viewedAt?: string | null;
+  readAt?: string | null;
+  lockedViewOnce?: boolean;
+  mediaConsumed?: boolean;
   createdAt: string;
   sender: { id: string; name: string; role: string };
   escrow?: P2PEscrow | null;
@@ -69,11 +93,25 @@ export default function MessagesPage() {
   const [loading, setLoading] = useState(true);
   const [showP2P, setShowP2P] = useState(false);
   const [showEmoji, setShowEmoji] = useState(false);
+  const [viewOnce, setViewOnce] = useState(false);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [pendingPreview, setPendingPreview] = useState<string | null>(null);
+  const [recording, setRecording] = useState(false);
+  const [recordSecs, setRecordSecs] = useState(0);
   const [p2pTitle, setP2pTitle] = useState("");
   const [p2pAmount, setP2pAmount] = useState("");
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
+  const [viewOnceReveal, setViewOnceReveal] = useState<{
+    url: string;
+    id: string;
+  } | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const recordTimerRef = useRef<number | null>(null);
 
   const loadBalance = useCallback(async () => {
     if (session?.user?.role !== "CLIENT") return;
@@ -94,6 +132,7 @@ export default function MessagesPage() {
     setActiveId(id);
     setShowP2P(false);
     setShowEmoji(false);
+    clearPending();
     const res = await fetch(`/api/inquiries?id=${id}`);
     const data = await res.json();
     if (!res.ok) return;
@@ -105,6 +144,13 @@ export default function MessagesPage() {
     setPeerCode(data.inquiry.model.referralCode);
   }
 
+  function clearPending() {
+    if (pendingPreview) URL.revokeObjectURL(pendingPreview);
+    setPendingFile(null);
+    setPendingPreview(null);
+    setViewOnce(false);
+  }
+
   useEffect(() => {
     loadList();
     loadBalance();
@@ -114,9 +160,45 @@ export default function MessagesPage() {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, activeId]);
 
-  async function send(e: FormEvent) {
+  // Refresh read receipts / new messages while a thread is open
+  useEffect(() => {
+    if (!activeId) return;
+    const id = window.setInterval(async () => {
+      const res = await fetch(`/api/inquiries?id=${activeId}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setMessages(data.inquiry.messages || []);
+    }, 6000);
+    return () => window.clearInterval(id);
+  }, [activeId]);
+
+  useEffect(() => {
+    return () => {
+      if (recordTimerRef.current) window.clearInterval(recordTimerRef.current);
+      mediaRecorderRef.current?.stream.getTracks().forEach((t) => t.stop());
+    };
+  }, []);
+
+  function pickFile(file: File | null) {
+    if (!file) return;
+    if (pendingPreview) URL.revokeObjectURL(pendingPreview);
+    setPendingFile(file);
+    if (file.type.startsWith("image/") || file.type.startsWith("video/")) {
+      setPendingPreview(URL.createObjectURL(file));
+    } else {
+      setPendingPreview(null);
+    }
+    if (!file.type.startsWith("image/")) setViewOnce(false);
+  }
+
+  async function sendText(e: FormEvent) {
     e.preventDefault();
-    if (!activeId || !input.trim()) return;
+    if (!activeId) return;
+    if (pendingFile) {
+      await sendMedia(pendingFile, input.trim(), viewOnce);
+      return;
+    }
+    if (!input.trim()) return;
     setSending(true);
     setShowEmoji(false);
     const res = await fetch("/api/inquiries", {
@@ -127,6 +209,25 @@ export default function MessagesPage() {
     setSending(false);
     if (res.ok) {
       setInput("");
+      await openThread(activeId);
+      loadList();
+    }
+  }
+
+  async function sendMedia(file: File, caption: string, once: boolean) {
+    if (!activeId) return;
+    setSending(true);
+    setShowEmoji(false);
+    const form = new FormData();
+    form.set("inquiryId", activeId);
+    form.set("file", file, file.name || `media-${Date.now()}`);
+    if (caption) form.set("body", caption);
+    if (once) form.set("viewOnce", "1");
+    const res = await fetch("/api/inquiries", { method: "POST", body: form });
+    setSending(false);
+    if (res.ok) {
+      setInput("");
+      clearPending();
       await openThread(activeId);
       loadList();
     }
@@ -147,6 +248,69 @@ export default function MessagesPage() {
       const pos = start + emoji.length;
       el.setSelectionRange(pos, pos);
     });
+  }
+
+  async function startRecording() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+        ? "audio/webm;codecs=opus"
+        : MediaRecorder.isTypeSupported("audio/webm")
+          ? "audio/webm"
+          : "";
+      const recorder = mime
+        ? new MediaRecorder(stream, { mimeType: mime })
+        : new MediaRecorder(stream);
+      chunksRef.current = [];
+      recorder.ondataavailable = (ev) => {
+        if (ev.data.size > 0) chunksRef.current.push(ev.data);
+      };
+      recorder.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        if (recordTimerRef.current) {
+          window.clearInterval(recordTimerRef.current);
+          recordTimerRef.current = null;
+        }
+        setRecording(false);
+        const blob = new Blob(chunksRef.current, {
+          type: recorder.mimeType || "audio/webm",
+        });
+        if (blob.size < 500) return;
+        const file = new File([blob], `audio-${Date.now()}.webm`, {
+          type: blob.type,
+        });
+        await sendMedia(file, "", false);
+      };
+      mediaRecorderRef.current = recorder;
+      recorder.start();
+      setRecording(true);
+      setRecordSecs(0);
+      recordTimerRef.current = window.setInterval(
+        () => setRecordSecs((s) => s + 1),
+        1000,
+      );
+    } catch {
+      alert("No se pudo acceder al micrófono");
+    }
+  }
+
+  function stopRecording() {
+    mediaRecorderRef.current?.stop();
+  }
+
+  async function openViewOnce(messageId: string) {
+    const res = await fetch("/api/inquiries", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "viewOnce", messageId }),
+    });
+    const data = await res.json();
+    if (!res.ok) return;
+    const url = data.message?.mediaUrl as string | undefined;
+    if (url) {
+      setViewOnceReveal({ url, id: messageId });
+    }
+    if (activeId) await openThread(activeId);
   }
 
   async function createP2P(e: FormEvent) {
@@ -201,6 +365,11 @@ export default function MessagesPage() {
     }
   }
 
+  const canViewOnce = Boolean(
+    pendingFile?.type.startsWith("image/") ||
+      (pendingPreview && pendingFile?.type.startsWith("image/")),
+  );
+
   return (
     <div className="space-y-8">
       <PageHeader
@@ -226,7 +395,6 @@ export default function MessagesPage() {
         />
       ) : (
         <div className="grid gap-4 overflow-hidden rounded-[1.5rem] border border-line lg:grid-cols-[0.85fr_1.15fr] lg:gap-0">
-          {/* Conversation list */}
           <div
             className={cn(
               "chat-list-panel max-h-[70vh] space-y-0.5 overflow-y-auto p-2 lg:border-r lg:border-line",
@@ -244,9 +412,7 @@ export default function MessagesPage() {
                   onClick={() => openThread(item.id)}
                   className={cn(
                     "flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition",
-                    active
-                      ? "chat-list-item-active"
-                      : "hover:bg-white/[0.04]",
+                    active ? "chat-list-item-active" : "hover:bg-white/[0.04]",
                   )}
                 >
                   <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-champagne/40 to-blush/50 text-sm font-semibold text-ink">
@@ -270,7 +436,6 @@ export default function MessagesPage() {
             })}
           </div>
 
-          {/* Thread */}
           <div
             className={cn(
               "chat-shell flex max-h-[min(74vh,calc(100dvh-11rem))] min-h-[55vh] flex-col overflow-hidden lg:min-h-[70vh] lg:rounded-none lg:border-0",
@@ -369,9 +534,52 @@ export default function MessagesPage() {
                           mine ? "chat-bubble-mine" : "chat-bubble-theirs",
                         )}
                       >
-                        <p className="whitespace-pre-wrap">{m.body}</p>
+                        {m.lockedViewOnce ? (
+                          <button
+                            type="button"
+                            onClick={() => openViewOnce(m.id)}
+                            className="flex min-w-[10rem] flex-col items-start gap-2 rounded-lg bg-black/20 px-3 py-4"
+                          >
+                            <ViewOnceBadge locked />
+                          </button>
+                        ) : m.mediaConsumed ||
+                          (m.viewOnce && m.viewedAt && !m.mediaUrl) ? (
+                          <ViewOnceBadge consumed mine={mine} />
+                        ) : m.type === "IMAGE" && m.mediaUrl ? (
+                          <div className="space-y-1">
+                            {m.viewOnce && <ViewOnceBadge mine={mine} />}
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={m.mediaUrl}
+                              alt={m.body || "Foto"}
+                              className="max-h-72 max-w-full rounded-lg object-cover"
+                            />
+                            {m.body &&
+                              m.body !== "Foto" &&
+                              m.body !== "Foto de una vista" && (
+                                <p className="whitespace-pre-wrap">{m.body}</p>
+                              )}
+                          </div>
+                        ) : m.type === "VIDEO" && m.mediaUrl ? (
+                          <video
+                            src={m.mediaUrl}
+                            controls
+                            className="max-h-72 max-w-full rounded-lg"
+                          />
+                        ) : m.type === "AUDIO" && m.mediaUrl ? (
+                          <audio src={m.mediaUrl} controls className="max-w-full" />
+                        ) : m.type === "FILE" ? (
+                          <FileChip
+                            name={m.mediaName || m.body || "Archivo"}
+                            href={m.mediaUrl}
+                            mine={mine}
+                          />
+                        ) : (
+                          <p className="whitespace-pre-wrap">{m.body}</p>
+                        )}
                         <span className="chat-bubble-meta">
                           {shortTime(m.createdAt)}
+                          <MessageTicks mine={mine} readAt={m.readAt} />
                         </span>
                       </div>
                     );
@@ -424,56 +632,174 @@ export default function MessagesPage() {
                     </div>
                   </form>
                 ) : (
-                  <form
-                    onSubmit={send}
-                    className="chat-composer relative flex items-end gap-1.5 px-2 py-2.5 sm:gap-2 sm:px-3"
-                  >
-                    <ChatEmojiPicker
-                      open={showEmoji}
-                      onClose={() => setShowEmoji(false)}
-                      onPick={insertEmoji}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowP2P(true)}
-                      title={dict.p2p.createTitle}
-                      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-champagne hover:bg-white/5"
+                  <div className="chat-composer relative space-y-2 px-2 py-2.5 sm:px-3">
+                    {pendingFile && (
+                      <div className="flex items-center gap-3 rounded-2xl border border-line bg-ink/60 px-3 py-2">
+                        {pendingPreview &&
+                        pendingFile.type.startsWith("image/") ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={pendingPreview}
+                            alt=""
+                            className="h-14 w-14 rounded-lg object-cover"
+                          />
+                        ) : pendingPreview &&
+                          pendingFile.type.startsWith("video/") ? (
+                          <video
+                            src={pendingPreview}
+                            className="h-14 w-14 rounded-lg object-cover"
+                          />
+                        ) : (
+                          <FileChip name={pendingFile.name} mine />
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-xs text-mist">
+                            {pendingFile.name}
+                          </p>
+                          {canViewOnce && (
+                            <label className="mt-1 flex items-center gap-2 text-xs text-cream">
+                              <input
+                                type="checkbox"
+                                checked={viewOnce}
+                                onChange={(e) => setViewOnce(e.target.checked)}
+                                className="rounded border-line accent-champagne"
+                              />
+                              Ver solo una vez
+                            </label>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={clearPending}
+                          className="rounded-full p-2 text-mist hover:text-cream"
+                          aria-label="Quitar archivo"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                    )}
+
+                    <form
+                      onSubmit={sendText}
+                      className="relative flex items-end gap-1 sm:gap-1.5"
                     >
-                      <ShieldPlus className="h-5 w-5" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setShowEmoji((v) => !v)}
-                      className={cn(
-                        "flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-mist hover:bg-white/5 hover:text-cream",
-                        showEmoji && "bg-white/10 text-champagne",
-                      )}
-                      aria-label="Emoji"
-                    >
-                      <Smile className="h-5 w-5" />
-                    </button>
-                    <input
-                      ref={inputRef}
-                      value={input}
-                      onChange={(e) => setInput(e.target.value)}
-                      onFocus={() => setShowEmoji(false)}
-                      className="chat-input text-sm"
-                      placeholder={dict.messages.placeholder}
-                      autoComplete="off"
-                    />
-                    <button
-                      type="submit"
-                      disabled={sending || !input.trim()}
-                      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-champagne to-blush text-ink disabled:opacity-40"
-                      aria-label={dict.messages.placeholder}
-                    >
-                      {sending ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
+                      <ChatEmojiPicker
+                        open={showEmoji}
+                        onClose={() => setShowEmoji(false)}
+                        onPick={insertEmoji}
+                      />
+                      <input
+                        ref={fileRef}
+                        type="file"
+                        className="hidden"
+                        onChange={(e) => {
+                          pickFile(e.target.files?.[0] || null);
+                          e.target.value = "";
+                        }}
+                      />
+                      <input
+                        ref={cameraRef}
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        className="hidden"
+                        onChange={(e) => {
+                          pickFile(e.target.files?.[0] || null);
+                          e.target.value = "";
+                        }}
+                      />
+
+                      <button
+                        type="button"
+                        onClick={() => setShowP2P(true)}
+                        title={dict.p2p.createTitle}
+                        className="flex h-11 w-10 shrink-0 items-center justify-center rounded-full text-champagne hover:bg-white/5 sm:w-11"
+                      >
+                        <ShieldPlus className="h-5 w-5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => fileRef.current?.click()}
+                        className="flex h-11 w-10 shrink-0 items-center justify-center rounded-full text-mist hover:bg-white/5 hover:text-cream sm:w-11"
+                        aria-label="Adjuntar"
+                      >
+                        <Paperclip className="h-5 w-5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => cameraRef.current?.click()}
+                        className="flex h-11 w-10 shrink-0 items-center justify-center rounded-full text-mist hover:bg-white/5 hover:text-cream sm:w-11"
+                        aria-label="Cámara"
+                      >
+                        <Camera className="h-5 w-5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowEmoji((v) => !v)}
+                        className={cn(
+                          "flex h-11 w-10 shrink-0 items-center justify-center rounded-full text-mist hover:bg-white/5 hover:text-cream sm:w-11",
+                          showEmoji && "bg-white/10 text-champagne",
+                        )}
+                        aria-label="Emoji"
+                      >
+                        <Smile className="h-5 w-5" />
+                      </button>
+
+                      {recording ? (
+                        <div className="flex flex-1 items-center gap-2 rounded-full border border-blush/40 bg-ink px-4 py-2.5 text-sm text-blush">
+                          <span className="h-2 w-2 animate-pulse rounded-full bg-blush" />
+                          Grabando… {recordSecs}s
+                        </div>
                       ) : (
-                        <Send className="h-4 w-4" />
+                        <input
+                          ref={inputRef}
+                          value={input}
+                          onChange={(e) => setInput(e.target.value)}
+                          onFocus={() => setShowEmoji(false)}
+                          className="chat-input text-sm"
+                          placeholder={
+                            pendingFile
+                              ? "Añade un mensaje…"
+                              : dict.messages.placeholder
+                          }
+                          autoComplete="off"
+                        />
                       )}
-                    </button>
-                  </form>
+
+                      {recording ? (
+                        <button
+                          type="button"
+                          onClick={stopRecording}
+                          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-blush text-ink"
+                          aria-label="Detener"
+                        >
+                          <Square className="h-4 w-4 fill-current" />
+                        </button>
+                      ) : input.trim() || pendingFile ? (
+                        <button
+                          type="submit"
+                          disabled={sending}
+                          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-champagne to-blush text-ink disabled:opacity-40"
+                          aria-label="Enviar"
+                        >
+                          {sending ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Send className="h-4 w-4" />
+                          )}
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => void startRecording()}
+                          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-champagne to-blush text-ink"
+                          aria-label="Audio"
+                        >
+                          <Mic className="h-5 w-5" />
+                        </button>
+                      )}
+                    </form>
+                  </div>
                 )}
               </>
             ) : (
@@ -483,6 +809,28 @@ export default function MessagesPage() {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {viewOnceReveal && (
+        <div
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/90 p-4"
+          onClick={() => setViewOnceReveal(null)}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={viewOnceReveal.url}
+            alt="Foto de una vista"
+            className="max-h-[90vh] max-w-full rounded-lg object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
+          <button
+            type="button"
+            className="absolute right-4 top-4 rounded-full bg-white/10 p-2 text-cream"
+            onClick={() => setViewOnceReveal(null)}
+          >
+            <X className="h-5 w-5" />
+          </button>
         </div>
       )}
     </div>
