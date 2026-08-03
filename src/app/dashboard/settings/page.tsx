@@ -1,8 +1,8 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Loader2 } from "lucide-react";
+import { Camera, Loader2, UserRound } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { Toast } from "@/components/ui/Toast";
@@ -21,6 +21,7 @@ type Profile = {
   isVerified: boolean;
   rating: number;
   role: string;
+  avatarUrl: string | null;
 };
 
 export default function SettingsPage() {
@@ -28,7 +29,10 @@ export default function SettingsPage() {
   const { data: session } = useSession();
   const [user, setUser] = useState<Profile | null>(null);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [toast, setToast] = useState(false);
+  const [toastMsg, setToastMsg] = useState("");
+  const fileRef = useRef<HTMLInputElement>(null);
   const isModel = session?.user?.role === "MODEL";
 
   useEffect(() => {
@@ -57,9 +61,45 @@ export default function SettingsPage() {
     if (res.ok) {
       const data = await res.json();
       setUser((u) => (u ? { ...u, ...data.user } : u));
+      setToastMsg(dict.settingsPage.saved);
       setToast(true);
       window.setTimeout(() => setToast(false), 2000);
     }
+  }
+
+  async function onAvatarSelected(file: File | null) {
+    if (!file || !user) return;
+    setUploading(true);
+    const form = new FormData();
+    form.set("avatar", file);
+    const res = await fetch("/api/profile", { method: "POST", body: form });
+    const data = await res.json().catch(() => ({}));
+    setUploading(false);
+    if (!res.ok) {
+      alert(data.error || "No se pudo subir la foto");
+      return;
+    }
+    setUser((u) =>
+      u ? { ...u, avatarUrl: data.user?.avatarUrl || u.avatarUrl } : u,
+    );
+    setToastMsg(dict.settingsPage.saved);
+    setToast(true);
+    window.setTimeout(() => setToast(false), 2000);
+    if (fileRef.current) fileRef.current.value = "";
+  }
+
+  async function onRemoveAvatar() {
+    if (!user?.avatarUrl) return;
+    setUploading(true);
+    const form = new FormData();
+    form.set("action", "remove");
+    const res = await fetch("/api/profile", { method: "POST", body: form });
+    setUploading(false);
+    if (!res.ok) return;
+    setUser((u) => (u ? { ...u, avatarUrl: null } : u));
+    setToastMsg(dict.settingsPage.saved);
+    setToast(true);
+    window.setTimeout(() => setToast(false), 2000);
   }
 
   if (!user) {
@@ -79,6 +119,71 @@ export default function SettingsPage() {
       />
 
       <form onSubmit={onSave} className="surface max-w-2xl space-y-4 rounded-[1.75rem] p-5 sm:p-6">
+        <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center">
+          <div className="relative">
+            <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-full border border-line bg-ink/50">
+              {user.avatarUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={user.avatarUrl}
+                  alt=""
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <UserRound className="h-10 w-10 text-mist" />
+              )}
+            </div>
+            <button
+              type="button"
+              disabled={uploading}
+              onClick={() => fileRef.current?.click()}
+              className="absolute -bottom-1 -right-1 flex h-9 w-9 items-center justify-center rounded-full border border-line bg-ink-soft text-champagne shadow-lg transition hover:bg-champagne/20 disabled:opacity-60"
+              aria-label={dict.settingsPage.avatarChange}
+            >
+              {uploading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Camera className="h-4 w-4" />
+              )}
+            </button>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif,.jpg,.jpeg,.png,.webp,.gif"
+              className="hidden"
+              onChange={(e) => onAvatarSelected(e.target.files?.[0] || null)}
+            />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium text-cream">{dict.settingsPage.avatar}</p>
+            <p className="mt-1 text-xs text-mist">{dict.settingsPage.avatarHint}</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={uploading}
+                onClick={() => fileRef.current?.click()}
+                className="btn-ghost text-sm"
+              >
+                {uploading
+                  ? dict.settingsPage.avatarUploading
+                  : user.avatarUrl
+                    ? dict.settingsPage.avatarChange
+                    : dict.settingsPage.avatarUpload}
+              </button>
+              {user.avatarUrl && (
+                <button
+                  type="button"
+                  disabled={uploading}
+                  onClick={onRemoveAvatar}
+                  className="btn-ghost text-sm text-mist"
+                >
+                  {dict.settingsPage.avatarRemove}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
         <div>
           <label className="mb-2 block text-sm text-mist">{dict.settingsPage.name}</label>
           <input
@@ -174,7 +279,7 @@ export default function SettingsPage() {
         </button>
       </form>
 
-      <Toast open={toast} message={dict.settingsPage.saved} tone="success" />
+      <Toast open={toast} message={toastMsg || dict.settingsPage.saved} tone="success" />
     </div>
   );
 }

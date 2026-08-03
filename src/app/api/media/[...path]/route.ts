@@ -29,14 +29,69 @@ function mimeFromName(name: string | null | undefined, fallback?: string | null)
 }
 
 export async function GET(_req: Request, ctx: Ctx) {
+  const parts = (await ctx.params).path || [];
+
+  // Public profile photos: /api/media/avatar/:userId
+  if (parts.length === 2 && parts[0] === "avatar") {
+    const userId = parts[1];
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        avatarData: true,
+        avatarMime: true,
+        avatarUrl: true,
+        isActive: true,
+      },
+    });
+    if (!user || !user.isActive) {
+      return NextResponse.json({ error: "No encontrado" }, { status: 404 });
+    }
+
+    if (user.avatarData && user.avatarData.length > 0) {
+      const bytes = Buffer.from(user.avatarData);
+      return new NextResponse(bytes, {
+        status: 200,
+        headers: {
+          "Content-Type": user.avatarMime || "image/jpeg",
+          "Cache-Control": "public, max-age=300",
+          "Content-Length": String(bytes.length),
+        },
+      });
+    }
+
+    // Legacy disk / gallery URL fallback
+    if (
+      user.avatarUrl?.startsWith("/uploads/") ||
+      user.avatarUrl?.startsWith("/api/media/chat/")
+    ) {
+      try {
+        const disk = path.join(
+          process.cwd(),
+          "public",
+          user.avatarUrl.replace(/^\//, ""),
+        );
+        const buffer = await readFile(disk);
+        return new NextResponse(buffer, {
+          status: 200,
+          headers: {
+            "Content-Type": mimeFromName(user.avatarUrl, "image/jpeg"),
+            "Cache-Control": "public, max-age=300",
+          },
+        });
+      } catch {
+        /* fallthrough */
+      }
+    }
+
+    return NextResponse.json({ error: "Sin foto" }, { status: 404 });
+  }
+
   const session = await auth();
   if (!session?.user) {
     return NextResponse.json({ error: "No autorizado" }, { status: 401 });
   }
 
-  const parts = (await ctx.params).path || [];
-
-  // DB-backed: /api/media/msg/:messageId
+  // DB-backed chat media: /api/media/msg/:messageId
   if (parts.length === 2 && parts[0] === "msg") {
     const messageId = parts[1];
     const message = await prisma.inquiryMessage.findUnique({
@@ -65,7 +120,6 @@ export async function GET(_req: Request, ctx: Ctx) {
       return NextResponse.json({ error: "Sin permiso" }, { status: 403 });
     }
 
-    // View-once already consumed: only reveal was via PATCH; no longer serve
     if (message.viewOnce && message.viewedAt && message.senderId !== session.user.id) {
       return NextResponse.json({ error: "Ya no disponible" }, { status: 410 });
     }
@@ -82,8 +136,10 @@ export async function GET(_req: Request, ctx: Ctx) {
       });
     }
 
-    // Legacy disk fallback
-    if (message.mediaUrl?.startsWith("/uploads/") || message.mediaUrl?.startsWith("/api/media/chat/")) {
+    if (
+      message.mediaUrl?.startsWith("/uploads/") ||
+      message.mediaUrl?.startsWith("/api/media/chat/")
+    ) {
       try {
         const rel = message.mediaUrl.replace(/^\/api\/media\/chat\//, "chat/");
         const disk = message.mediaUrl.startsWith("/uploads/")
