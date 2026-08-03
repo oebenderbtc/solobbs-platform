@@ -24,6 +24,7 @@ import {
 import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ChatEmojiPicker } from "@/components/ChatEmojiPicker";
+import { ChatCameraCapture } from "@/components/ChatCameraCapture";
 import {
   FileChip,
   MessageTicks,
@@ -108,8 +109,8 @@ export default function MessagesPage() {
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-  const cameraRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const [cameraOpen, setCameraOpen] = useState(false);
   const chunksRef = useRef<Blob[]>([]);
   const recordTimerRef = useRef<number | null>(null);
 
@@ -700,17 +701,6 @@ export default function MessagesPage() {
                           e.target.value = "";
                         }}
                       />
-                      <input
-                        ref={cameraRef}
-                        type="file"
-                        accept="image/*"
-                        capture="environment"
-                        className="hidden"
-                        onChange={(e) => {
-                          pickFile(e.target.files?.[0] || null);
-                          e.target.value = "";
-                        }}
-                      />
 
                       <button
                         type="button"
@@ -730,7 +720,7 @@ export default function MessagesPage() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => cameraRef.current?.click()}
+                        onClick={() => setCameraOpen(true)}
                         className="flex h-11 w-10 shrink-0 items-center justify-center rounded-full text-mist hover:bg-white/5 hover:text-cream sm:w-11"
                         aria-label="Cámara"
                       >
@@ -836,6 +826,12 @@ export default function MessagesPage() {
           </button>
         </div>
       )}
+
+      <ChatCameraCapture
+        open={cameraOpen}
+        onClose={() => setCameraOpen(false)}
+        onCapture={(file) => pickFile(file)}
+      />
     </div>
   );
 }

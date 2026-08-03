@@ -1,15 +1,16 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Required for Sumsub WebSDK camera / mic in iframe
+  // Camera / mic for chat capture + Sumsub KYC iframe
   async headers() {
     return [
       {
-        source: "/dashboard/kyc",
+        source: "/dashboard/:path*",
         headers: [
           {
             key: "Permissions-Policy",
-            value: 'camera=(self "https://api.sumsub.com"), microphone=(self "https://api.sumsub.com")',
+            value:
+              'camera=(self "https://api.sumsub.com"), microphone=(self "https://api.sumsub.com")',
           },
         ],
       },
